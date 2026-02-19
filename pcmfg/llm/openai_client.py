@@ -27,6 +27,7 @@ class OpenAIClient:
         model: str = "gpt-4o",
         temperature: float = 0.3,
         max_tokens: int = 4096,
+        base_url: str | None = None,
     ) -> None:
         """Initialize OpenAI client.
 
@@ -35,6 +36,7 @@ class OpenAIClient:
             model: Model name to use.
             temperature: Sampling temperature (0.0-2.0).
             max_tokens: Maximum tokens per response.
+            base_url: Custom base URL for API (e.g., for proxies or self-hosted).
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -46,8 +48,13 @@ class OpenAIClient:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.base_url = base_url
 
-        self._client = OpenAIClientSDK(api_key=self.api_key)
+        # Initialize client with optional custom base URL
+        client_kwargs: dict[str, Any] = {"api_key": self.api_key}
+        if self.base_url:
+            client_kwargs["base_url"] = self.base_url
+        self._client = OpenAIClientSDK(**client_kwargs)
 
     @retry(
         stop=stop_after_attempt(3),

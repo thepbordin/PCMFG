@@ -106,6 +106,7 @@ class PCMFGAnalyzer:
                 model=actual_model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                base_url=self.config.llm.base_url,
             )
         elif actual_provider == "anthropic":
             return AnthropicLLMClient(
