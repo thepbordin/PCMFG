@@ -4,15 +4,17 @@
 
 ## Overview
 
-PCFMG analyzes romantic narratives to extract emotional patterns and plot them on multi-dimensional axes. Using large language models and psychological frameworks (Russell's Circumplex Model and Plutchik's Wheel of Emotions), it transforms text into quantitative emotional data that reveals how romantic relationships evolve over time.
+PCFMG analyzes romantic narratives to extract emotional patterns and output them as raw time-series data. Using large language models and psychological frameworks (Russell's Circumplex Model and Plutchik's Wheel of Emotions), it transforms text into quantitative emotional data that reveals how romantic relationships evolve over time.
 
 ### What PCFMG Does
 
-- **Phase 1**: Uses LLMs to identify story beats, main pairing, aliases, world guidelines, and extract directed emotions (9 base emotions) using a strict 1-5 scale
-- **Phase 2**: Normalizes emotions based on the 1-5 baseline system (1=neutral, 5=extreme)
-- **Phase 3**: Computes four romance axes (Intimacy, Passion, Hostility, Anxiety) from the base emotion scores
+- **Phase 1 (World Builder)**: Uses LLM Agent 1 to identify main pairing, aliases, core conflict, world guidelines, and create a Mermaid relationship graph
+- **Phase 2 (Emotion Extraction)**: Uses LLM Agent 2 in an iterative loop to extract directed emotions (9 base emotions) using a strict 1-5 scale
+- **Phase 3 (Synthesis)**: Deterministic Python processing with forward-fill imputation and time-series generation
 
-The result is a time-series visualization showing how each relationship dimension changes throughout the narrative.
+**Key Difference**: PCFMG outputs **raw 9 base emotions** as time-series, preserving maximum granularity for downstream analysis. It does NOT aggregate emotions into derived axes.
+
+The result is a time-series visualization showing how each of the 9 emotions evolves throughout the narrative for both directions of the relationship.
 
 ## The Psychological Framework
 
@@ -59,43 +61,60 @@ PCFMG operates as a 3-phase pipeline:
 └────────────────────────────┬────────────────────────────────────┘
                              ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                        PHASE 1: Extraction                        │
-│                     (LLM-Based Analysis)                          │
-│  • Split text into story beats/scenes                            │
-│  • Identify characters and their relationships                   │
-│  • Extract directed emotions for each beat                       │
-│  • Output: Raw emotion list with metadata                        │
+│                 PHASE 1: WORLD BUILDER (Agent 1)                  │
+│                        (LLM-Based)                                │
+│  • Identify main pairing (2 central characters)                  │
+│  • Extract character aliases (nicknames, titles)                 │
+│  • Extract core conflict (single sentence)                       │
+│  • Generate world guidelines (discrete facts)                    │
+│  • Create Mermaid relationship graph                             │
+│  • Output: WorldBuilderOutput JSON                               │
 └────────────────────────────┬────────────────────────────────────┘
                              ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                        PHASE 2: Normalization                     │
-│                    (Baseline Calibration)                         │
-│  • Normalize all emotions to 1-5 scale                           │
-│  • Positive emotions: 1 (neutral) to 5 (euphoric)               │
-│  • Negative emotions: -1 (neutral) to -5 (agonizing)            │
-│  • Apply valence adjustment based on emotion type                │
+│              PHASE 2: EMOTION EXTRACTION (Agent 2)                │
+│                   (LLM Loop over chunks)                          │
+│  • Split text into chunks (e.g., 500 words)                      │
+│  • Skip chunks with no relevant characters (token efficiency)    │
+│  • Extract directed emotions (A→B and B→A separately)            │
+│  • Score 9 base emotions per direction (1-5 scale)              │
+│  • Include justification quotes for validation                   │
+│  • Output: List[ChunkAnalysis]                                   │
 └────────────────────────────┬────────────────────────────────────┘
                              ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                        PHASE 3: Axis Mapping                      │
-│                   (Romance Dimensions)                            │
-│  • Map normalized emotions to 4 axes:                            │
-│    - Intimacy: Closeness, trust, vulnerability                  │
-│    - Passion: Desire, excitement, romantic intensity             │
-│    - Hostility: Anger, resentment, conflict                      │
-│    - Anxiety: Fear, uncertainty, tension                         │
-│  • Generate time-series data for visualization                   │
+│                 PHASE 3: SYNTHESIS (Python)                       │
+│                   (Deterministic - No LLM)                        │
+│  • Forward fill missing emotion data (.ffill())                  │
+│  • Build raw emotion time-series for A→B                         │
+│  • Build raw emotion time-series for B→A                         │
+│  • Generate visualization (9 emotions × 2 directions)            │
+│  • Output: JSON + PNG                                             │
 └────────────────────────────┬────────────────────────────────────┘
                              ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                         OUTPUT                                    │
-│  • JSON file with time-series data                               │
-│  • Matplotlib visualization (4-panel plot)                       │
+│  • JSON file with raw emotion time-series                        │
+│  • Matplotlib visualization                                       │
 │  • Optional: Statistical analysis report                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## The Four Romance Axes
+## The 9 Base Emotions
+
+PCFMG tracks 9 raw emotions, preserving maximum data granularity:
+
+| Emotion | Description | Romantic Context |
+|---------|-------------|------------------|
+| **Joy** | Happiness, pleasure, delight | Moments of happiness in the relationship |
+| **Trust** | Safety, reliance, vulnerability | Emotional openness and reliance |
+| **Fear** | Panic, dread, terror, anxiety | Fear of rejection, loss, or revelation |
+| **Surprise** | Astonishment, shock | Unexpected revelations or behaviors |
+| **Sadness** | Grief, sorrow, despair | Loss, longing, disappointment |
+| **Disgust** | Revulsion, aversion, contempt | Moral objections, physical aversion |
+| **Anger** | Fury, rage, frustration | Conflicts, betrayals, misunderstandings |
+| **Anticipation** | Looking forward to, expecting | Hope, planning, waiting |
+| **Arousal** | Physical lust, romantic desire, sexual tension | Physical attraction, romantic tension |
 
 ### The 1-5 Scoring System
 
@@ -111,28 +130,24 @@ PCFMG uses a strict scoring rubric where **1 is the baseline/neutral**:
 
 **Critical**: All emotions default to 1 unless explicit text proves otherwise. Normal conversation between characters typically scores all 1s.
 
-### Romance Axes Mapping
+### Directed Emotions (A→B vs B→A)
 
-| Axis | Description | Base Emotions (Computation) |
-|------|-------------|------------------|
-| **Intimacy** | Emotional closeness, trust, vulnerability, connection | Primary: Trust, Joy |
-| **Passion** | Romantic desire, excitement, physical attraction, intensity | Primary: Arousal, Anticipation, Joy |
-| **Hostility** | Anger, resentment, conflict, dislike, antagonism | Primary: Anger, Disgust, Sadness |
-| **Anxiety** | Fear, uncertainty, tension, worry, insecurity | Primary: Fear, Surprise (negative), Sadness |
+A fundamental principle in PCFMG is that **A→B is NOT the same as B→A**:
 
-Each emotion is mapped to one or more axes based on:
-1. Its valence (positive/negative)
-2. Its arousal level (high/low)
-3. Its relevance to romantic relationships
+- Each direction is scored independently
+- Only score what is explicitly in the text (dialogue, internal monologue, physical action)
+- If A thinks about B while B is absent, ONLY output A→B
+- Forward fill is used to carry forward last known emotional state when a character is absent
 
 ## Features
 
 - **Multi-format Input**: Accepts plain text files, PDFs, and EPUBs
 - **Configurable LLM Backend**: Supports OpenAI GPT and Anthropic Claude
-- **Batch Processing**: Analyze multiple narratives in parallel
-- **Interactive Visualization**: Zoom, pan, and explore emotional trajectories
+- **Token Efficiency**: Skips LLM calls for chunks with no relevant characters
+- **Forward Fill Imputation**: Handles missing emotion data gracefully
+- **Bidirectional Tracking**: Tracks both A→B and B→A emotions separately
+- **Justification Quotes**: Every score is backed by textual evidence
 - **Export Options**: JSON, CSV, PNG, PDF formats
-- **Statistical Analysis**: Correlation matrices, trend analysis, anomaly detection
 
 ## Installation
 
@@ -189,6 +204,9 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
 # Optional: Model selection
 LLM_MODEL=gpt-4o  # or claude-3-5-sonnet-20241022
 
+# Optional: OpenAI Base URL (for custom endpoints)
+OPENAI_BASE_URL=https://api.openai.com/v1
+
 # Optional: Output directory
 OUTPUT_DIR=./output
 ```
@@ -206,7 +224,7 @@ Results will be saved to the specified output directory:
 ```
 results/
 ├── emotional_trajectory.json    # Raw time-series data
-├── emotional_trajectory.png     # 4-panel visualization
+├── emotional_trajectory.png     # Visualization
 └── analysis_report.md           # Human-readable summary
 ```
 
@@ -231,8 +249,8 @@ python main.py analyze novel.txt --model claude-3-5-sonnet-20241022
 # Process multiple files
 python main.py analyze *.txt --batch
 
-# Custom beat detection (scene boundaries)
-python main.py analyze novel.txt --beat-length 500
+# Custom chunk length
+python main.py analyze novel.txt --chunk-length 500
 
 # Include statistical report
 python main.py analyze novel.txt --stats
@@ -259,6 +277,11 @@ with open("novel.txt", "r") as f:
 # Run the 3-phase pipeline
 results = analyzer.analyze(text)
 
+# Access raw emotion time-series
+a_to_b = results.timeseries["A_to_B"]
+print(f"Joy trajectory: {a_to_b.Joy}")
+print(f"Trust trajectory: {a_to_b.Trust}")
+
 # Generate visualization
 results.plot("output.png")
 
@@ -284,6 +307,7 @@ results.export_json("trajectory.json")
       "Elizabeth Bennet": ["Elizabeth", "Lizzy", "Miss Bennet", "Lizzie"],
       "Fitzwilliam Darcy": ["Darcy", "Mr. Darcy"]
     },
+    "core_conflict": "Elizabeth's prejudice clashes with Darcy's pride until they overcome their misconceptions.",
     "world_guidelines": [
       "Fact 1: The Bennet family has no fortune and five daughters to marry off.",
       "Fact 2: Darcy initially appears proud and dismissive at the ball.",
@@ -312,45 +336,57 @@ results.export_json("trajectory.json")
             "Anticipation": 1,
             "Arousal": 1
           },
-          "justification_quote": "She told the story...with great energy among her friends; for she had a lively, playful disposition, which delighted in anything ridiculous."
+          "justification_quote": "She told the story...with great energy among her friends"
         }
       ],
-      "scene_summary": "Elizabeth meets Darcy at the Meryton ball and takes offense at his refusal to dance."
+      "scene_summary": "Elizabeth meets Darcy at the Meryton ball."
     }
   ],
-  "axes": {
-    "intimacy": [1.0, 1.2, 1.5, 2.1, 3.0, 3.5],
-    "passion": [1.0, 1.0, 1.2, 1.8, 2.5, 4.2],
-    "hostility": [4.0, 3.5, 2.5, 1.5, 0.8, 0.3],
-    "anxiety": [1.0, 1.5, 2.2, 2.5, 1.2, 0.5]
+  "timeseries": {
+    "A_to_B": {
+      "Joy": [1.0, 1.0, 1.5, 2.0, 3.0, 4.0],
+      "Trust": [1.0, 1.0, 1.0, 1.5, 2.0, 3.5],
+      "Fear": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Surprise": [1.0, 2.0, 1.0, 1.0, 1.0, 1.0],
+      "Sadness": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Disgust": [3.0, 2.5, 2.0, 1.5, 1.0, 1.0],
+      "Anger": [2.0, 2.0, 1.5, 1.0, 1.0, 1.0],
+      "Anticipation": [1.0, 1.0, 1.0, 1.5, 2.0, 3.0],
+      "Arousal": [1.0, 1.0, 1.0, 1.5, 2.5, 4.0]
+    },
+    "B_to_A": {
+      "Joy": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Trust": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Fear": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Surprise": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Sadness": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Disgust": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Anger": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Anticipation": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+      "Arousal": [3.0, 3.0, 3.5, 4.0, 4.5, 5.0]
+    }
   }
 }
 ```
 
 ### Visualization
 
-The default output is a 4-panel matplotlib figure showing each axis over time:
+The default output visualizes the raw 9 emotions over time for both relationship directions:
 
 ```
-┌─────────────────────┬─────────────────────┐
-│    Intimacy         │    Passion          │
-│  ─────────────      │  ─────────────      │
-│    5  ┌───┐         │    5       ┌─┐      │
-│    4  │   │         │    4       │ │      │
-│    3  │   └─┐       │    3   ┌───┘ │      │
-│    2  │     └───┐   │    2   │     └──┐   │
-│    1  ──────────   │    1───┘        └───│
-│       ──────       │       ──────       │
-├─────────────────────┼─────────────────────┤
-│    Hostility        │    Anxiety          │
-│  ─────────────      │  ─────────────      │
-│    5  ┌─┐           │    5   ┌───┐        │
-│    4  │ └──┐        │    4   │   │        │
-│    3  │    └──┐     │    3   │   └──┐     │
-│    2  │       └──┐  │    2   │      └──┐  │
-│    1  ─────────    │    1───┘         └──│
-│       ──────       │       ──────       │
-└─────────────────────┴─────────────────────┘
+Elizabeth → Darcy                          Darcy → Elizabeth
+┌─────────────────────────────┐            ┌─────────────────────────────┐
+│ Joy     ────────            │            │ Joy     ────────            │
+│ Trust   ────────            │            │ Trust   ────────            │
+│ Fear    ────────            │            │ Fear    ────────            │
+│ Surprise ────────           │            │ Surprise ────────           │
+│ Sadness ────────            │            │ Sadness ────────            │
+│ Disgust ▀▀▀▄▄▄────          │            │ Disgust ────────            │
+│ Anger   ▄▄▄▄▄────           │            │ Anger   ────────            │
+│ Anticip. ────────           │            │ Anticip. ────────           │
+│ Arousal ────────            │            │ Arousal ▄▄▀▀▀▀▀▀            │
+└─────────────────────────────┘            └─────────────────────────────┘
+        Narrative Progression                      Narrative Progression
 
 Note: Y-axis shows 1-5 scale where 1 is baseline/neutral
 ```
@@ -366,11 +402,12 @@ llm:
   model: "gpt-4o"
   temperature: 0.3
   max_tokens: 4096
+  openai_base_url: "https://api.openai.com/v1"  # Optional: custom endpoint
 
 processing:
-  beat_detection: "automatic"  # or "length", "chapter"
-  beat_length: 500  # words per beat
-  min_beat_length: 200
+  chunk_length: 500  # words per chunk
+  min_chunk_length: 200
+  skip_empty_chunks: true  # Skip chunks with no character names
 
 output:
   formats: ["json", "png", "csv"]
@@ -380,6 +417,43 @@ output:
 
 ```bash
 python main.py analyze novel.txt --config pcmfg_config.yaml
+```
+
+## Token Efficiency
+
+PCFMG includes a token-saving optimization: before calling Agent 2 for a chunk, it checks if the chunk contains any character names from the aliases list. If not, the LLM call is skipped entirely, saving API costs.
+
+```python
+def should_process_chunk(chunk_text: str, aliases: dict) -> bool:
+    """Skip chunks with no relevant character names."""
+    all_names = set()
+    for main_name, alias_list in aliases.items():
+        all_names.add(main_name)
+        all_names.update(alias_list)
+    
+    return any(name.lower() in chunk_text.lower() for name in all_names)
+```
+
+## Forward Fill Imputation
+
+When a character is absent from a scene, Agent 2 only outputs the direction for the present character. Phase 3 uses forward fill to carry forward the last known emotional state:
+
+```python
+def impute_missing_emotions(chunks: list) -> list:
+    """
+    Forward fill missing emotion directions.
+    If chunk 5 has A→B but not B→A, carry forward B→A from chunk 4.
+    """
+    last_known = {}  # "source->target": DirectedEmotion
+    
+    for chunk in chunks:
+        # Store current
+        for emotion in chunk.directed_emotions:
+            key = f"{emotion.source}->{emotion.target}"
+            last_known[key] = emotion
+        
+        # Impute missing for main pairing
+        # ...
 ```
 
 ## Contributing
@@ -418,7 +492,7 @@ MIT License — See LICENSE file for details.
 
 ## Contact
 
-For questions, issues, or suggestions, please open a GitHub issue or contact [your-email@example.com].
+For questions, issues, or suggestions, please open a GitHub issue.
 
 ---
 

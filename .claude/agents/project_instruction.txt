@@ -1,0 +1,86 @@
+# Project Handover: Computational Romance Narrative Mining
+
+**Objective:** To extract, quantify, and visualize the emotional trajectory of romantic relationships in literature over time, specifically mapping complex tropes (e.g., Enemies to Lovers, Amnesia/Trauma) using a directed time-series graph.
+
+---
+
+### The Psychological Framework
+
+The algorithm abandons standard binary sentiment analysis in favor of a customized, mathematically sound relational model:
+
+1. **Directed Tracking (Source $\rightarrow$ Target):** Emotions are strictly asymmetrical. Character A's feelings toward B are tracked independently of B's feelings toward A, allowing for unrequited love and hidden trauma.
+
+2. **The 1-5 Baseline Logic:** Based on Russell's Circumplex Model of Affect. `1` is the absolute neutral baseline (normal interaction, zero arousal). The AI only scores `2-5` if there is explicit textual evidence.
+
+3. **The 9 Base Emotions:** Based on Plutchik’s Wheel of Emotions, plus a custom romantic metric. The 9 tracked raw data points are: _Joy, Trust, Fear, Surprise, Sadness, Disgust, Anger, Anticipation, and Arousal._
+
+
+---
+
+### Pipeline Architecture: The 3-Phase System
+
+#### Phase 1: Initialization (Agent 1 - "The World Builder")
+
+Instead of feeding the whole book blindly, we establish the context and rules.
+
+- **Input:** Novel summary, synopsis, or the first few chapters.
+
+- **Function:** A single LLM call to establish the universe, prevent downstream hallucinations, and catch name variations.
+
+- **Output (JSON):**
+
+    - `main_pairing`: The two target characters.
+
+    - `aliases`: Dictionary of all nicknames/titles to ensure exact entity matching.
+
+    - `world_guidelines`: A bulleted list of core plot facts/rules (e.g., "A lost his memory. B is terrified of the old A.").
+
+    - `mermaid_graph`: A computable relationship web in Mermaid.js syntax.
+
+
+#### Phase 2: Iterative Extraction (Agent 2 - "The Extractor")
+
+This is the workhorse loop. Agent 1's JSON output is dynamically injected into Agent 2's System Prompt to act as a "cheat sheet."
+
+- **Input:** Rolling text chunks (e.g., paragraph by paragraph or 500-word windows) + Agent 1's Context.
+
+- **Function:** Identifies the POV character, checks who is in the room, and extracts the A $\rightarrow$ B emotional state based strictly on the text.
+
+- **Output (JSON per chunk):**
+
+    - `chunk_main_pov` and `characters_present`.
+
+    - `directed_emotions`: A list containing the 1-5 scores for the 9 Base Emotions (Source $\rightarrow$ Target), but _only_ for the direction(s) explicitly shown in the text.
+
+    - `justification_quote`: The exact sentence proving the highest score (for debugging/validation).
+
+
+#### Phase 3: Synthesis & Visualization (Deterministic Python)
+
+_No LLM is used here, saving compute costs._ Standard Python (`pandas`, `numpy`, `matplotlib`) takes over.
+
+- **Step 3A: Missing Data Imputation:** Because Agent 2 only scores what is on the page, the reverse direction (B $\rightarrow$ A) will often be null. Pandas uses `.ffill()` (forward fill) to carry forward B's last known emotional state until they appear again.
+
+- **Step 3B: Synthesizing the 4 Romance Axes:** The script mathematically combines the 9 base metrics into the 4 high-level relationship vectors:
+
+    - **Intimacy (Emotional Pull):** `(Trust + Joy) / 2`
+
+    - **Passion (Physical Pull):** `(Arousal + Anticipation) / 2`
+
+    - **Hostility (Active Push):** `(Anger + Disgust) / 2`
+
+    - **Anxiety / Fear (Defensive Wall):** `(Fear + Anticipation) / 2`
+
+- **Step 3C: Graphing:** Plots the narrative timeline (X-axis) against the 1-5 emotional intensity (Y-axis), generating the final visual "heartbeat" of the novel.
+
+
+---
+
+### Key Safeguards & Developer Notes
+
+- **Strict JSON Enforcement:** Both LLMs must use structured outputs (JSON schema) so the Python pipeline does not crash during parsing.
+
+- **Token Efficiency:** By resolving `aliases` in Phase 1, the Python script can pre-filter chunks. If a text chunk contains zero names from the `aliases` list, the script skips Agent 2 entirely, saving massive API costs.
+
+
+Would you like me to write a clean, single-file Python script (`app.py`) containing the exact skeleton for this architecture, including the prompt handoffs and Pandas calculations, to complete the handover package?

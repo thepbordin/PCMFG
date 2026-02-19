@@ -1,0 +1,70 @@
+# PCMFG Configuration File
+# Copy this to pcmfg_config.yaml and customize
+
+# =============================================================================
+# LLM Provider Settings
+# =============================================================================
+llm:
+  # Provider: "openai" or "anthropic"
+  provider: "openai"
+
+  # Model name
+  # OpenAI examples: gpt-4o, gpt-4o-mini, gpt-4-turbo
+  # Anthropic examples: claude-3-5-sonnet-20241022, claude-3-opus-20240229
+  model: "GLM-4.5-Air"
+
+  # Temperature for LLM responses
+  # 0.0 = deterministic, 1.0 = balanced, 2.0 = creative
+  # Lower values recommended for consistent emotion extraction
+  temperature: 0.3
+
+  # Maximum tokens per LLM call
+  max_tokens: 4096
+
+  # Custom base URL for API (optional)
+  # Use this for:
+  # - API proxies (e.g., OpenRouter, Azure OpenAI)
+  # - Self-hosted models with OpenAI-compatible API
+  # - Local LLM servers (e.g., vLLM, Ollama with OpenAI compatibility)
+  # Examples:
+  #   base_url: "https://openrouter.ai/api/v1"
+  #   base_url: "https://your-resource.openai.azure.com"
+  #   base_url: "http://localhost:8000/v1"
+  base_url: "https://api.z.ai/api/coding/paas/v4"
+
+# =============================================================================
+# Text Processing Settings
+# =============================================================================
+processing:
+  # Beat detection mode:
+  #   - "automatic": LLM detects natural scene boundaries (recommended)
+  #   - "length": Split by word count using beat_length
+  #   - "chapter": Split by chapter markers (e.g., "Chapter 1", "Chapter 2")
+  beat_detection: "chapter"
+
+  # Target words per beat (used when beat_detection = "length")
+  beat_length: 500
+
+  # Minimum words per beat (prevents over-fragmentation)
+  min_beat_length: 200
+
+  # Maximum tokens per chunk sent to LLM
+  # Adjust based on your model's context window
+  max_chunk_tokens: 3000
+  max_concurrency: 5
+
+# =============================================================================
+# Output Settings
+# =============================================================================
+output:
+  # Output formats to generate
+  # Supported: json, csv, png
+  formats:
+    - "json"
+    - "png"
+
+  # Include statistical analysis report (markdown)
+  include_stats: true
+
+  # Image DPI for PNG visualization output
+  dpi: 300
