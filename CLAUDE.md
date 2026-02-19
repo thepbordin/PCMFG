@@ -288,12 +288,24 @@ PCFMG uses Plutchik's 8 emotions plus an added 9th emotion specific to romantic 
 
 ### Baseline Logic
 
-**The "Zero Point"**:
-- Baseline = 1 for positive emotions (not 0!)
-- Baseline = -1 for negative emotions (not 0!)
-- True neutral = 0 (rare in romance narratives)
+**The "Baseline is 1" Rule**:
 
-**Rationale**: Romantic narratives inherently have emotional charge. A "1" still represents some positive feeling, just not strong.
+In PCFMG, **1 is the neutral baseline**, not 0. This is critical:
+
+- **1**: No evidence of emotion. Polite, functional interaction. This is the DEFAULT.
+- **2-5**: Increasing intensity of emotion
+
+**Why 1 instead of 0?**
+- Romantic narratives inherently have emotional charge
+- "0" would imply complete absence, which is rare in social interactions
+- "1" represents "baseline human presence" - characters acknowledge each other without emotional loading
+
+**Example**:
+```
+"Good morning," she said.    → All emotions = 1 (baseline)
+"Good morning!" she beamed.  → Joy = 3, others = 1
+"Good morning," she spat.    → Anger = 3, Disgust = 2, others = 1
+```
 
 ---
 
@@ -361,29 +373,55 @@ class PCMFGAnalyzer:
 **`schemas.py`**: Pydantic models for validation
 ```python
 from pydantic import BaseModel, Field
+from typing import Dict, List
+
+class DirectedEmotionScores(BaseModel):
+    """9 base emotion scores for a directed emotion (Source → Target)."""
+    Joy: int = Field(ge=1, le=5)
+    Trust: int = Field(ge=1, le=5)
+    Fear: int = Field(ge=1, le=5)
+    Surprise: int = Field(ge=1, le=5)
+    Sadness: int = Field(ge=1, le=5)
+    Disgust: int = Field(ge=1, le=5)
+    Anger: int = Field(ge=1, le=5)
+    Anticipation: int = Field(ge=1, le=5)
+    Arousal: int = Field(ge=1, le=5)
 
 class DirectedEmotion(BaseModel):
+    """A directed emotion with scores and justification."""
     source: str
     target: str
-    emotion: str
-    confidence: float = Field(ge=0, le=1)
-    context: str
+    scores: DirectedEmotionScores
+    justification_quote: str
 
-class Beat(BaseModel):
-    index: int
-    text: str
-    position: float  # 0 to 1 (progress through narrative)
-    emotions: list[DirectedEmotion]
+class ChunkAnalysis(BaseModel):
+    """Analysis result for a text chunk."""
+    chunk_id: int
+    chunk_main_pov: str
+    characters_present: List[str]
+    directed_emotions: List[DirectedEmotion]
+    scene_summary: str
 
-class NormalizedEmotion(BaseModel):
-    emotion: str
-    value: float  # -5 to +5
+class WorldBuilderOutput(BaseModel):
+    """Output from Agent 1 (World Builder)."""
+    main_pairing: List[str]
+    aliases: Dict[str, List[str]]
+    world_guidelines: List[str]
+    mermaid_graph: str
 
 class AxisValues(BaseModel):
-    intimacy: float
-    passion: float
-    hostility: float
-    anxiety: float
+    """Computed romance axis values."""
+    intimacy: float = Field(ge=1, le=5)
+    passion: float = Field(ge=1, le=5)
+    hostility: float = Field(ge=1, le=5)
+    anxiety: float = Field(ge=1, le=5)
+
+class AnalysisResult(BaseModel):
+    """Complete analysis result."""
+    metadata: Dict[str, str | int]
+    world_builder: WorldBuilderOutput
+    chunks: List[ChunkAnalysis]
+    axes: Dict[str, List[float]]
 ```
 
 ---
@@ -635,82 +673,197 @@ if DEBUG:
 
 ## Prompt Templates
 
-### Phase 1: Emotion Extraction
+### Agent 1: World Builder
 
-```json
+```python
+agent_1_system_prompt = """
+You are an expert literary analyst, data structurer, and world-builder. Your task is to analyze a romance novel's text (or summary) and extract the core narrative scaffolding, relationship dynamics, and world rules.
+
+### YOUR TASK
+Read the provided text. Identify the primary characters, their aliases, the fundamental rules of their situation, and map their relationships using Mermaid.js syntax. Output your findings STRICTLY as a valid JSON object. Do not include markdown formatting like ```json in the output.
+
+### EXTRACTION RULES
+1. "main_pairing": The TWO central characters of the romance.
+2. "aliases": A comprehensive dictionary mapping the main and key secondary characters to all their nicknames, titles, and last names used in the text (e.g., "Elizabeth": ["Lizzy", "Miss Bennet"]).
+3. "world_guidelines": A list of discrete facts outlining the core conflict, the current status quo, and vital backstory. Break complex lore into simple, individual bullet points.
+4. "mermaid_graph": Create a Mermaid.js flowchart (graph TD) mapping the relationships between the main pairing and key secondary characters. Use labeled arrows to define the relationship (e.g., A -->|Political Marriage| B; B -->|Secretly Hates| C).
+
+### REQUIRED JSON SCHEMA
 {
-  "system_prompt": "You are a literary analyst specializing in emotional dynamics in romantic fiction. Your task is to identify directed emotions — emotions that one character feels toward another.",
-  "user_prompt": "Analyze the following text excerpt and identify all directed emotions.\n\nText:\n{text}\n\nFor each emotion, provide:\n1. Source character (who feels the emotion)\n2. Target character (who the emotion is directed toward)\n3. Emotion label (use basic emotions: joy, trust, fear, surprise, sadness, disgust, anger, anticipation)\n4. Brief context (1-2 sentences explaining why)\n\nRespond in JSON format:\n{{\"emotions\": [{{\"source\": \"...\", \"target\": \"...\", \"emotion\": \"...\", \"context\": \"...\"}}]}}",
-  "output_schema": {
-    "type": "object",
-    "properties": {
-      "emotions": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "source": {"type": "string"},
-            "target": {"type": "string"},
-            "emotion": {"type": "string"},
-            "context": {"type": "string"}
-          },
-          "required": ["source", "target", "emotion", "context"]
-        }
-      }
-    }
-  }
+  "main_pairing": ["Full Name 1", "Full Name 2"],
+  "aliases": {
+    "Full Name 1": ["Alias A", "Alias B", "Title"],
+    "Full Name 2": ["Alias C", "Alias D"]
+  },
+  "world_guidelines": [
+    "Fact 1: They were forced into a political marriage.",
+    "Fact 2: Character A lost his memory in an accident.",
+    "Fact 3: Character B is terrified of Character A regaining his memory."
+  ],
+  "mermaid_graph": "graph TD\\n    A[Character A] -->|Married| B[Character B]\\n    B -->|Afraid of| A"
 }
+"""
+
+agent_1_user_prompt = "Analyze the following text and extract the world information:\\n\\n{text}"
 ```
 
-### Phase 2: Valence Classification
+### Agent 2: Base Emotion Extractor
 
-```json
-{
-  "system_prompt": "Classify emotions as positive, negative, or neutral based on their typical valence in romantic relationships.",
-  "user_prompt": "Classify the valence of the following emotion: {emotion}\n\nRespond with JSON: {{\"valence\": \"positive|negative|neutral\", \"confidence\": 0.0-1.0}}",
-  "output_schema": {
-    "type": "object",
-    "properties": {
-      "valence": {"enum": ["positive", "negative", "neutral"]},
-      "confidence": {"type": "number", "minimum": 0, "maximum": 1}
-    }
-  }
-}
+```python
+agent_2_system_prompt = f"""
+You are an expert computational literary analyst extracting granular, directed emotional data from a romance novel.
+
+### CONTEXT
+* Main Pairing: {agent_1_json['main_pairing']}
+* Aliases: {agent_1_json['aliases']}
+* Core Conflict: {agent_1_json.get('core_conflict', 'Not specified')}
+
+### YOUR TASK
+Analyze the provided text chunk and output STRICTLY in JSON.
+1. Identify the "chunk_main_pov" (whose perspective we are in, or the focal character).
+2. List all "characters_present" in the scene.
+3. Map the DIRECTED emotions (Source -> Target) between the Main Pairing ONLY.
+   - A -> B is NOT the same as B -> A.
+   - Only score a direction if there is explicit textual evidence (dialogue, internal monologue, or physical action).
+   - If A is thinking about B while B is absent, ONLY output the A -> B direction. Do not guess B's unwritten feelings.
+
+### THE 9 BASE EMOTIONS (EXTENDED PLUTCHIK MODEL)
+Score the Source's feelings toward the Target on each of these 9 metrics:
+1. Joy (Happiness, pleasure, delight)
+2. Trust (Safety, reliance, vulnerability)
+3. Fear (Panic, dread, terror, anxiety)
+4. Surprise (Astonishment, shock)
+5. Sadness (Grief, sorrow, despair)
+6. Disgust (Revulsion, aversion, contempt)
+7. Anger (Fury, rage, frustration)
+8. Anticipation (Looking forward to, expecting, plotting)
+9. Arousal (Physical lust, romantic desire, sexual tension)
+
+### SCORING RUBRIC (STRICT DEFAULT TO 1)
+Assume 1 (Neutral/None) for ALL emotions unless explicit text proves otherwise. Normal conversation is all 1s.
+* 1 (None/Baseline): No evidence of this emotion. Polite, functional, or entirely absent.
+* 2 (Mild): A brief, subtle hint or low-energy flicker of the emotion.
+* 3 (Moderate): Clear, undeniable presence of the emotion.
+* 4 (Strong): Emotion heavily drives the character's actions or thoughts. High physiological arousal.
+* 5 (Extreme): Overwhelming, consuming saturation of the emotion. Maximum intensity.
+
+### REQUIRED JSON SCHEMA
+{{
+  "chunk_id": {chunk_id},
+  "chunk_main_pov": "Name of POV character",
+  "characters_present": ["Name 1", "Name 2"],
+  "directed_emotions": [
+    {{
+      "source": "Name of Source Character",
+      "target": "Name of Target Character",
+      "scores": {{
+        "Joy": <int 1-5>,
+        "Trust": <int 1-5>,
+        "Fear": <int 1-5>,
+        "Surprise": <int 1-5>,
+        "Sadness": <int 1-5>,
+        "Disgust": <int 1-5>,
+        "Anger": <int 1-5>,
+        "Anticipation": <int 1-5>,
+        "Arousal": <int 1-5>
+      }},
+      "justification_quote": "Exact text quote proving the highest active scores for this direction."
+    }}
+  ],
+  "scene_summary": "One brief sentence summarizing the action."
+}}
+"""
+
+agent_2_user_prompt = "Analyze the following text chunk:\\n\\n{text_chunk}"
 ```
 
 ---
 
 ## JSON Schemas
 
-### Input Schema
+### Agent 1 Output Schema (World Builder)
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "text": {
-      "type": "string",
-      "description": "The romantic narrative to analyze"
+    "main_pairing": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "The two central characters of the romance"
     },
-    "config": {
+    "aliases": {
       "type": "object",
-      "properties": {
-        "llm_provider": {"type": "string", "enum": ["openai", "anthropic"]},
-        "llm_model": {"type": "string"},
-        "beat_length": {"type": "integer", "minimum": 100},
-        "output_formats": {
-          "type": "array",
-          "items": {"type": "string", "enum": ["json", "csv", "png"]}
-        }
+      "description": "Character name to aliases mapping",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string"}
       }
+    },
+    "world_guidelines": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Discrete facts about the world"
+    },
+    "mermaid_graph": {
+      "type": "string",
+      "description": "Mermaid.js relationship graph"
     }
   },
-  "required": ["text"]
+  "required": ["main_pairing", "aliases", "world_guidelines", "mermaid_graph"]
 }
 ```
 
-### Output Schema
+### Agent 2 Output Schema (Base Emotion Extractor)
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "chunk_id": {"type": "integer"},
+    "chunk_main_pov": {"type": "string"},
+    "characters_present": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "directed_emotions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {"type": "string"},
+          "target": {"type": "string"},
+          "scores": {
+            "type": "object",
+            "properties": {
+              "Joy": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Trust": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Fear": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Surprise": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Sadness": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Disgust": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Anger": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Anticipation": {"type": "integer", "minimum": 1, "maximum": 5},
+              "Arousal": {"type": "integer", "minimum": 1, "maximum": 5}
+            },
+            "required": ["Joy", "Trust", "Fear", "Surprise", "Sadness", "Disgust", "Anger", "Anticipation", "Arousal"]
+          },
+          "justification_quote": {"type": "string"}
+        },
+        "required": ["source", "target", "scores", "justification_quote"]
+      }
+    },
+    "scene_summary": {"type": "string"}
+  },
+  "required": ["chunk_id", "chunk_main_pov", "characters_present", "directed_emotions", "scene_summary"]
+}
+```
+
+### Final Output Schema (Complete Analysis)
 
 ```json
 {
@@ -723,42 +876,44 @@ if DEBUG:
         "source": {"type": "string"},
         "analysis_date": {"type": "string", "format": "date-time"},
         "model": {"type": "string"},
-        "total_beats": {"type": "integer"}
+        "total_chunks": {"type": "integer"}
+      }
+    },
+    "world_builder": {
+      "type": "object",
+      "properties": {
+        "main_pairing": {"type": "array", "items": {"type": "string"}},
+        "aliases": {"type": "object"},
+        "world_guidelines": {"type": "array", "items": {"type": "string"}},
+        "mermaid_graph": {"type": "string"}
+      }
+    },
+    "chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chunk_id": {"type": "integer"},
+          "position": {"type": "number", "minimum": 0, "maximum": 1},
+          "chunk_main_pov": {"type": "string"},
+          "characters_present": {"type": "array", "items": {"type": "string"}},
+          "directed_emotions": {"type": "array"},
+          "scene_summary": {"type": "string"}
+        }
       }
     },
     "axes": {
       "type": "object",
       "properties": {
-        "intimacy": {"type": "array", "items": {"type": "number"}},
-        "passion": {"type": "array", "items": {"type": "number"}},
-        "hostility": {"type": "array", "items": {"type": "number"}},
-        "anxiety": {"type": "array", "items": {"type": "number"}}
+        "intimacy": {"type": "array", "items": {"type": "number", "minimum": 1, "maximum": 5}},
+        "passion": {"type": "array", "items": {"type": "number", "minimum": 1, "maximum": 5}},
+        "hostility": {"type": "array", "items": {"type": "number", "minimum": 1, "maximum": 5}},
+        "anxiety": {"type": "array", "items": {"type": "number", "minimum": 1, "maximum": 5}}
       },
       "required": ["intimacy", "passion", "hostility", "anxiety"]
-    },
-    "beats": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "index": {"type": "integer"},
-          "position": {"type": "number", "minimum": 0, "maximum": 1},
-          "summary": {"type": "string"},
-          "raw_emotions": {"type": "array", "items": {"type": "string"}},
-          "normalized_values": {
-            "type": "object",
-            "properties": {
-              "intimacy": {"type": "number"},
-              "passion": {"type": "number"},
-              "hostility": {"type": "number"},
-              "anxiety": {"type": "number"}
-            }
-          }
-        }
-      }
     }
   },
-  "required": ["metadata", "axes", "beats"]
+  "required": ["metadata", "world_builder", "chunks", "axes"]
 }
 ```
 
