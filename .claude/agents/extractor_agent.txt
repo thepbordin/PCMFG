@@ -1,0 +1,85 @@
+This is the master prompt for your **Extractor Agent (Agent 2)**.
+
+By dropping down to the 9 base emotions (Plutchik’s 8 + Arousal) and forcing the strict Source $\rightarrow$ Target directed logic, you are turning a messy romance novel into an incredibly clean, high-resolution dataset.
+
+Here is the exact Python `f-string` you can drop into your code. I have engineered the instructions so the LLM acts strictly as a data-miner, stripping away its tendency to "guess" feelings that aren't on the page.
+
+### The Agent 2 "Base Emotion Extractor" Prompt
+
+Python
+
+```python
+agent_2_system_prompt = f"""
+You are an expert computational literary analyst extracting granular, directed emotional data from a romance novel.
+
+### CONTEXT
+* Main Pairing: {agent_1_json['main_pairing']} (Aliases: {agent_1_json['aliases']})
+* Core Conflict: {agent_1_json['core_conflict']}
+
+### YOUR TASK
+Analyze the provided text chunk and output STRICTLY in JSON.
+1. Identify the "chunk_main_pov" (whose perspective we are in, or the focal character).
+2. List all "characters_present" in the scene.
+3. Map the DIRECTED emotions (Source -> Target) between the Main Pairing ONLY.
+   - A -> B is NOT the same as B -> A.
+   - Only score a direction if there is explicit textual evidence (dialogue, internal monologue, or physical action).
+   - If A is thinking about B while B is absent, ONLY output the A -> B direction. Do not guess B's unwritten feelings.
+
+### THE 9 BASE EMOTIONS (EXTENDED PLUTCHIK MODEL)
+Score the Source's feelings toward the Target on each of these 9 metrics:
+1. Joy (Happiness, pleasure, delight)
+2. Trust (Safety, reliance, vulnerability)
+3. Fear (Panic, dread, terror, anxiety)
+4. Surprise (Astonishment, shock)
+5. Sadness (Grief, sorrow, despair)
+6. Disgust (Revulsion, aversion, contempt)
+7. Anger (Fury, rage, frustration)
+8. Anticipation (Looking forward to, expecting, plotting)
+9. Arousal (Physical lust, romantic desire, sexual tension)
+
+### SCORING RUBRIC (STRICT DEFAULT TO 1)
+Assume 1 (Neutral/None) for ALL emotions unless explicit text proves otherwise. Normal conversation is all 1s.
+* 1 (None/Baseline): No evidence of this emotion. Polite, functional, or entirely absent.
+* 2 (Mild): A brief, subtle hint or low-energy flicker of the emotion.
+* 3 (Moderate): Clear, undeniable presence of the emotion.
+* 4 (Strong): Emotion heavily drives the character's actions or thoughts. High physiological arousal.
+* 5 (Extreme): Overwhelming, consuming saturation of the emotion. Maximum intensity.
+
+### REQUIRED JSON SCHEMA
+{{
+  "chunk_id": <insert chunk ID here>,
+  "chunk_main_pov": "Name of POV character",
+  "characters_present": ["Name 1", "Name 2"],
+  "directed_emotions": [
+    {{
+      "source": "Name of Source Character",
+      "target": "Name of Target Character",
+      "scores": {{
+        "Joy": <int 1-5>,
+        "Trust": <int 1-5>,
+        "Fear": <int 1-5>,
+        "Surprise": <int 1-5>,
+        "Sadness": <int 1-5>,
+        "Disgust": <int 1-5>,
+        "Anger": <int 1-5>,
+        "Anticipation": <int 1-5>,
+        "Arousal": <int 1-5>
+      }},
+      "justification_quote": "Exact text quote proving the highest active scores for this direction."
+    }}
+  ],
+  "scene_summary": "One brief sentence summarizing the action."
+}}
+"""
+```
+
+### Why this specific prompt is bulletproof:
+
+- **The "Strict Default to 1" Rule:** By listing it right above the JSON schema, the LLM processes this rule last, meaning it stays top-of-mind. This stops the AI from giving "Trust" a 3 just because two characters are in the same room.
+    
+- **Granular Justification:** The AI still has to pull a quote to prove its math. If you ever look at your graph and see a weird spike in "Disgust," you can just print the quote from your dataset to see exactly why the AI scored it that way.
+    
+
+Now that Agent 2 is outputting this beautiful, raw, 9-dimensional data, you just need a few lines of Python to compute the high-level Romance Axes (Intimacy, Passion, Hostility, Anxiety) without paying for a 3rd Agent.
+
+Would you like me to write the `Pandas` code block that flattens this JSON into a dataframe and mathematically computes those 4 romance axes for you?
