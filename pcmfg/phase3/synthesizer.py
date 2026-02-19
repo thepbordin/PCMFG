@@ -79,14 +79,54 @@ def impute_missing_emotions(
         # Track which directions are present in this chunk
         present_directions: set[str] = set()
 
-        # Update last known states from current chunk
+        # Filter and update last known states from current chunk
+        # Only consider emotions between main pairing characters
+        filtered_emotions: list[DirectedEmotion] = []
         for emotion in chunk.directed_emotions:
-            key = f"{emotion.source}->{emotion.target}"
-            present_directions.add(key)
-            last_known[key] = emotion.scores
+            # Check if this emotion is between main pairing
+            is_a_to_b = (
+                emotion.source == char_a and emotion.target == char_b
+            ) or (
+                # Also check case-insensitive and partial matches
+                char_a.lower() in emotion.source.lower()
+                and char_b.lower() in emotion.target.lower()
+            )
+            is_b_to_a = (
+                emotion.source == char_b and emotion.target == char_a
+            ) or (
+                char_b.lower() in emotion.source.lower()
+                and char_a.lower() in emotion.target.lower()
+            )
+
+            if is_a_to_b:
+                key = f"{char_a}->{char_b}"
+                present_directions.add(key)
+                last_known[key] = emotion.scores
+                # Create normalized emotion
+                filtered_emotions.append(
+                    DirectedEmotion(
+                        source=char_a,
+                        target=char_b,
+                        scores=emotion.scores,
+                        justification_quote=emotion.justification_quote,
+                    )
+                )
+            elif is_b_to_a:
+                key = f"{char_b}->{char_a}"
+                present_directions.add(key)
+                last_known[key] = emotion.scores
+                # Create normalized emotion
+                filtered_emotions.append(
+                    DirectedEmotion(
+                        source=char_b,
+                        target=char_a,
+                        scores=emotion.scores,
+                        justification_quote=emotion.justification_quote,
+                    )
+                )
 
         # Build new directed_emotions with forward-filled missing directions
-        new_directed_emotions: list[DirectedEmotion] = list(chunk.directed_emotions)
+        new_directed_emotions: list[DirectedEmotion] = filtered_emotions
 
         # Check and impute each direction
         for direction in [f"{char_a}->{char_b}", f"{char_b}->{char_a}"]:

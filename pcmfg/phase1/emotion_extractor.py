@@ -24,11 +24,62 @@ from pcmfg.models.schemas import (
 logger = logging.getLogger(__name__)
 
 
+def normalize_character_name(
+    name: str,
+    aliases: dict[str, list[str]],
+    main_pairing: list[str],
+) -> str:
+    """Normalize a character name to its canonical form using aliases.
+
+    Args:
+        name: Character name to normalize (may be an alias or variation).
+        aliases: Dictionary mapping canonical names to their aliases.
+        main_pairing: The two main character names.
+
+    Returns:
+        Canonical character name, or original name if no match found.
+    """
+    if not name:
+        return name
+
+    name_lower = name.lower().strip()
+
+    # Check each canonical name and its aliases
+    for canonical_name, alias_list in aliases.items():
+        # Check canonical name (case-insensitive)
+        if canonical_name.lower() == name_lower:
+            return canonical_name
+        # Check all aliases (case-insensitive)
+        for alias in alias_list:
+            if alias.lower() == name_lower:
+                return canonical_name
+
+    # Check for partial matches (e.g., "first pig" -> "The Three Little Pigs")
+    for canonical_name, alias_list in aliases.items():
+        # Check if any word from the name matches
+        name_words = name_lower.split()
+        for word in name_words:
+            if len(word) < 3:  # Skip short words like "the", "a"
+                continue
+            for alias in [canonical_name] + alias_list:
+                if word in alias.lower():
+                    return canonical_name
+
+    # If still no match, check main pairing directly
+    for main_char in main_pairing:
+        if main_char.lower() in name_lower or name_lower in main_char.lower():
+            return main_char
+
+    return name
+
+
 def should_process_chunk(chunk_text: str, aliases: dict[str, list[str]]) -> bool:
     """Check if chunk contains any character names from aliases.
 
     This is a token efficiency optimization: skip LLM calls for chunks
     that don't contain any relevant character names.
+
+    Uses both exact matching and partial matching (e.g., "pig" matches "three little pigs").
 
     Args:
         chunk_text: Text to check.
@@ -43,7 +94,32 @@ def should_process_chunk(chunk_text: str, aliases: dict[str, list[str]]) -> bool
         all_names.update(alias_list)
 
     chunk_lower = chunk_text.lower()
-    return any(name.lower() in chunk_lower for name in all_names)
+
+    # First try exact substring match
+    for name in all_names:
+        if name.lower() in chunk_lower:
+            return True
+
+    # Try partial matching - check if key words from names appear in text
+    # This handles cases like "two little pigs" matching "three little pigs"
+    key_words: set[str] = set()
+    for name in all_names:
+        # Extract significant words (length > 2) from names
+        for word in name.lower().split():
+            if len(word) > 2:
+                key_words.add(word)
+
+    # Check if any key word appears in chunk
+    chunk_words = set(chunk_lower.split())
+    for key_word in key_words:
+        if key_word in chunk_words:
+            return True
+        # Also check if key word is a substring of any chunk word
+        for chunk_word in chunk_words:
+            if key_word in chunk_word or chunk_word in key_word:
+                return True
+
+    return False
 
 
 def build_emotion_extractor_system_prompt(world: WorldBuilderOutput) -> str:
@@ -214,13 +290,33 @@ class EmotionExtractor:
 
         response["directed_emotions"] = parsed_emotions
 
-        # Ensure required fields exist
+        # Normalize and ensure required fields exist
         if "chunk_main_pov" not in response:
             response["chunk_main_pov"] = (
                 self.world.main_pairing[0] if self.world.main_pairing else "Unknown"
             )
+        else:
+            # Normalize POV character name
+            response["chunk_main_pov"] = normalize_character_name(
+                response["chunk_main_pov"],
+                self.world.aliases,
+                self.world.main_pairing,
+            )
+
         if "characters_present" not in response:
             response["characters_present"] = self.world.main_pairing[:2]
+        else:
+            # Normalize character names in characters_present
+            normalized_chars = []
+            for char in response["characters_present"]:
+                normalized = normalize_character_name(
+                    char, self.world.aliases, self.world.main_pairing
+                )
+                # Avoid duplicates
+                if normalized not in normalized_chars:
+                    normalized_chars.append(normalized)
+            response["characters_present"] = normalized_chars
+
         if "scene_summary" not in response:
             response["scene_summary"] = ""
 
@@ -247,6 +343,14 @@ class EmotionExtractor:
 
             if not source or not target:
                 return None
+
+            # Normalize character names using aliases
+            source = normalize_character_name(
+                source, self.world.aliases, self.world.main_pairing
+            )
+            target = normalize_character_name(
+                target, self.world.aliases, self.world.main_pairing
+            )
 
             # Parse scores, defaulting to 1 for any missing/invalid values
             scores_data = data.get("scores", {})
