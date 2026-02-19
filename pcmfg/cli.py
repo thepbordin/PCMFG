@@ -231,17 +231,19 @@ def _export_results(
     if format in ["csv", "both"]:
         csv_path = output_dir / "emotional_trajectory.csv"
         plotter = EmotionPlotter()
-        plotter.export_data(result.axes, csv_path, format="csv")
+        plotter.export_data(result.timeseries, csv_path, format="csv")
         console.print(f"  [dim]CSV:[/] {csv_path}")
 
     # Generate plot
     if not no_plot and "png" in config.output.formats:
         plot_path = output_dir / "emotional_trajectory.png"
         plotter = EmotionPlotter(dpi=config.output.dpi)
-        plotter.plot_axes(
-            result.axes,
+        # Use the new plot_timeseries for raw 9 emotions
+        plotter.plot_timeseries(
+            result.timeseries,
             plot_path,
             title=f"Emotional Trajectory: {result.metadata.source}",
+            main_pairing=result.world_builder.main_pairing,
         )
         console.print(f"  [dim]Plot:[/] {plot_path}")
 
@@ -249,6 +251,8 @@ def _export_results(
 def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
     """Generate a statistical analysis report."""
     import numpy as np
+
+    from pcmfg.models.schemas import EMOTION_LIST
 
     report_path = output_dir / "analysis_report.md"
 
@@ -270,48 +274,112 @@ def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
     for guideline in result.world_builder.world_guidelines:
         lines.append(f"- {guideline}")
 
+    # Core conflict if available
+    if result.world_builder.core_conflict:
+        lines.extend(
+            [
+                "",
+                "## Core Conflict",
+                "",
+                f"{result.world_builder.core_conflict}",
+            ]
+        )
+
+    # Raw Emotion Statistics (A→B)
     lines.extend(
         [
             "",
-            "## Axis Statistics",
+            "## Emotion Statistics (A→B)",
             "",
-            "| Axis | Mean | Std Dev | Min | Max |",
-            "|------|------|---------|-----|-----|",
+            f"*{result.world_builder.main_pairing[0]} → {result.world_builder.main_pairing[1]}*",
+            "",
+            "| Emotion | Mean | Std Dev | Min | Max |",
+            "|---------|------|---------|-----|-----|",
         ]
     )
 
-    for name in ["intimacy", "passion", "hostility", "anxiety"]:
-        values = getattr(result.axes, name)
-        if values:
-            arr = np.array(values)
-            lines.append(
-                f"| {name.capitalize()} | {arr.mean():.2f} | {arr.std():.2f} | "
-                f"{arr.min():.2f} | {arr.max():.2f} |"
-            )
+    a_to_b = result.timeseries.get("A_to_B")
+    if a_to_b:
+        for emotion in EMOTION_LIST:
+            values = getattr(a_to_b, emotion, [])
+            if values:
+                arr = np.array(values)
+                lines.append(
+                    f"| {emotion} | {arr.mean():.2f} | {arr.std():.2f} | "
+                    f"{arr.min():.2f} | {arr.max():.2f} |"
+                )
+
+    # Raw Emotion Statistics (B→A)
+    lines.extend(
+        [
+            "",
+            "## Emotion Statistics (B→A)",
+            "",
+            f"*{result.world_builder.main_pairing[1]} → {result.world_builder.main_pairing[0]}*",
+            "",
+            "| Emotion | Mean | Std Dev | Min | Max |",
+            "|---------|------|---------|-----|-----|",
+        ]
+    )
+
+    b_to_a = result.timeseries.get("B_to_A")
+    if b_to_a:
+        for emotion in EMOTION_LIST:
+            values = getattr(b_to_a, emotion, [])
+            if values:
+                arr = np.array(values)
+                lines.append(
+                    f"| {emotion} | {arr.mean():.2f} | {arr.std():.2f} | "
+                    f"{arr.min():.2f} | {arr.max():.2f} |"
+                )
+
+    # Trend Analysis
+    lines.extend(
+        [
+            "",
+            "## Trend Analysis (A→B)",
+            "",
+        ]
+    )
+
+    if a_to_b:
+        for emotion in EMOTION_LIST:
+            values = getattr(a_to_b, emotion, [])
+            if values and len(values) >= 2:
+                # Linear regression for trend
+                x = np.arange(len(values))
+                y = np.array(values)
+                slope = np.polyfit(x, y, 1)[0]
+                if slope > 0.05:
+                    trend = "increasing ↗"
+                elif slope < -0.05:
+                    trend = "decreasing ↘"
+                else:
+                    trend = "stable →"
+                lines.append(f"- **{emotion}**: {trend} (slope: {slope:.3f})")
 
     lines.extend(
         [
             "",
-            "## Trend Analysis",
+            "## Trend Analysis (B→A)",
             "",
         ]
     )
 
-    # Simple trend analysis
-    for name in ["intimacy", "passion", "hostility", "anxiety"]:
-        values = getattr(result.axes, name)
-        if values and len(values) >= 2:
-            # Linear regression for trend
-            x = np.arange(len(values))
-            y = np.array(values)
-            slope = np.polyfit(x, y, 1)[0]
-            if slope > 0.1:
-                trend = "increasing"
-            elif slope < -0.1:
-                trend = "decreasing"
-            else:
-                trend = "stable"
-            lines.append(f"- **{name.capitalize()}**: {trend} (slope: {slope:.3f})")
+    if b_to_a:
+        for emotion in EMOTION_LIST:
+            values = getattr(b_to_a, emotion, [])
+            if values and len(values) >= 2:
+                x = np.arange(len(values))
+                y = np.array(values)
+                slope = np.polyfit(x, y, 1)[0]
+                if slope > 0.05:
+                    trend = "increasing ↗"
+                elif slope < -0.05:
+                    trend = "decreasing ↘"
+                else:
+                    trend = "stable →"
+                lines.append(f"- **{emotion}**: {trend} (slope: {slope:.3f})")
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
