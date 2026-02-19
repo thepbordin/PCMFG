@@ -11,7 +11,7 @@ llm:
   # Model name
   # OpenAI examples: gpt-4o, gpt-4o-mini, gpt-4-turbo
   # Anthropic examples: claude-3-5-sonnet-20241022, claude-3-opus-20240229
-  model: "gpt-4o"
+  model: "GLM-4.5-Air"
 
   # Temperature for LLM responses
   # 0.0 = deterministic, 1.0 = balanced, 2.0 = creative
@@ -51,6 +51,14 @@ processing:
   # Maximum tokens per chunk sent to LLM
   # Adjust based on your model's context window
   max_chunk_tokens: 3000
+
+  # Maximum concurrent API calls for parallel processing
+  # Higher values = faster processing but more API load
+  # Recommended: 3-5 for most APIs, 1-2 for rate-limited endpoints
+  max_concurrency: 5
+
+  # Batch size for progress reporting (report every N chunks)
+  progress_batch_size: 10
 
 # =============================================================================
 # Output Settings

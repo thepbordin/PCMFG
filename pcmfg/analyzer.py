@@ -218,26 +218,70 @@ class PCMFGAnalyzer:
     def _extract_emotions(self, text: str) -> list[ChunkAnalysis]:
         """Extract emotions from all text chunks.
 
+        Uses parallel processing with configurable concurrency.
+
         Args:
             text: Full input text.
 
         Returns:
             List of ChunkAnalysis objects.
         """
+        from pcmfg.utils.parallel import ParallelProcessor, ProcessingResult
+
         # Chunk text based on config
         chunks_text = self._chunk_text(text)
-
-        chunk_analyses: list[ChunkAnalysis] = []
         total_chunks = len(chunks_text)
 
-        for i, chunk_text in enumerate(chunks_text):
-            position = i / total_chunks if total_chunks > 0 else 0.0
-            logger.info(f"Processing chunk {i + 1}/{total_chunks}")
+        # emotion_extractor is guaranteed to be set after _run_world_builder
+        assert self.emotion_extractor is not None
+        extractor = self.emotion_extractor  # Local reference for type safety
 
-            # emotion_extractor is guaranteed to be set after _run_world_builder
-            assert self.emotion_extractor is not None
-            analysis = self.emotion_extractor.extract(chunk_text, i, position)
-            chunk_analyses.append(analysis)
+        # Create processor function
+        def process_chunk(args: tuple[str, int, float]) -> ChunkAnalysis:
+            chunk_text, chunk_id, position = args
+            return extractor.extract(chunk_text, chunk_id, position)
+
+        # Prepare chunk data
+        chunk_items = [
+            (chunk_text, i, i / total_chunks if total_chunks > 0 else 0.0)
+            for i, chunk_text in enumerate(chunks_text)
+        ]
+
+        # Progress tracking
+        completed_count = 0
+
+        def on_progress(completed: int, total: int) -> None:
+            nonlocal completed_count
+            if completed > completed_count:
+                logger.info(f"Processing chunks: {completed}/{total}")
+                completed_count = completed
+
+        def on_error(index: int, error: Exception) -> None:
+            logger.error(f"Failed to process chunk {index}: {error}")
+
+        # Process in parallel
+        processor = ParallelProcessor(
+            process_fn=process_chunk,
+            max_concurrency=self.config.processing.max_concurrency,
+            on_progress=on_progress,
+            on_error=on_error,
+        )
+
+        results = processor.process(chunk_items)
+
+        # Extract successful results, create defaults for failures
+        chunk_analyses: list[ChunkAnalysis] = []
+        for result in results:
+            if result.success and result.result is not None:
+                chunk_analyses.append(result.result)
+            else:
+                # Create default chunk for failed extraction
+                default_chunk = self.emotion_extractor._create_default_chunk(
+                    result.index,
+                    result.index / total_chunks if total_chunks > 0 else 0.0,
+                    str(result.error) if result.error else "Unknown error",
+                )
+                chunk_analyses.append(default_chunk)
 
         return chunk_analyses
 

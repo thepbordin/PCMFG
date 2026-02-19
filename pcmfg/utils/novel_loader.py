@@ -135,7 +135,8 @@ def get_novel_info(novel_dir: str | Path) -> dict:
     collections = sorted([d for d in novel_dir.iterdir() if d.is_dir()])
 
     total_chapters = 0
-    chapter_range = {"start": None, "end": None}
+    chapter_start: int | None = None
+    chapter_end: int | None = None
     has_side_stories = False
 
     for collection_dir in collections:
@@ -145,13 +146,10 @@ def get_novel_info(novel_dir: str | Path) -> dict:
         for chapter_file in chapter_files:
             _, chapter_num = _parse_chapter_filename(chapter_file.name)
             if chapter_num is not None and chapter_num < 1000:
-                if (
-                    chapter_range["start"] is None
-                    or chapter_num < chapter_range["start"]
-                ):
-                    chapter_range["start"] = chapter_num
-                if chapter_range["end"] is None or chapter_num > chapter_range["end"]:
-                    chapter_range["end"] = chapter_num
+                if chapter_start is None or chapter_num < chapter_start:
+                    chapter_start = chapter_num
+                if chapter_end is None or chapter_num > chapter_end:
+                    chapter_end = chapter_num
             elif chapter_num is not None and chapter_num >= 1000:
                 has_side_stories = True
 
@@ -159,7 +157,7 @@ def get_novel_info(novel_dir: str | Path) -> dict:
         "path": str(novel_dir),
         "collections": [c.name for c in collections],
         "total_files": total_chapters,
-        "chapter_range": chapter_range,
+        "chapter_range": {"start": chapter_start, "end": chapter_end},
         "has_side_stories": has_side_stories,
     }
 

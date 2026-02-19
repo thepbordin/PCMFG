@@ -38,6 +38,17 @@ class ProcessingConfig(BaseModel):
     max_chunk_tokens: int = Field(
         default=3000, ge=500, description="Maximum tokens per LLM chunk"
     )
+    max_concurrency: int = Field(
+        default=5,
+        ge=1,
+        le=50,
+        description="Maximum concurrent API calls",
+    )
+    progress_batch_size: int = Field(
+        default=10,
+        ge=1,
+        description="Number of chunks to process before progress update",
+    )
 
 
 class OutputConfig(BaseModel):
