@@ -37,7 +37,7 @@ llm:
 # =============================================================================
 processing:
   # Beat detection mode:
-  #   - "automatic": LLM detects natural scene boundaries (recommended)
+  #   - "automatic": Try chapter-based first, fall back to length-based
   #   - "length": Split by word count using beat_length
   #   - "chapter": Split by chapter markers (e.g., "Chapter 1", "Chapter 2")
   beat_detection: "chapter"
@@ -48,9 +48,16 @@ processing:
   # Minimum words per beat (prevents over-fragmentation)
   min_beat_length: 200
 
-  # Maximum tokens per chunk sent to LLM
+  # Maximum tokens per chunk sent to LLM for emotion extraction
   # Adjust based on your model's context window
   max_chunk_tokens: 3000
+
+  # Maximum tokens for world builder sample (strategic sampling)
+  # For long texts, samples from beginning, middle, and end sections
+  # to capture the full narrative arc. Default: 8000 tokens
+  world_builder_sample_tokens: 8000
+
+  # Maximum concurrent API calls for parallel chunk processing
   max_concurrency: 5
 
 # =============================================================================

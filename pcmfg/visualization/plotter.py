@@ -133,8 +133,17 @@ class EmotionPlotter:
         config = EMOTION_CONFIG.get(emotion, {"color": "#3498db", "description": ""})
         color = config["color"]
 
+        # Handle empty data
+        if not values:
+            ax.text(
+                0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes
+            )
+            ax.set_title(title, fontsize=10)
+            ax.grid(True, alpha=0.3)
+            return
+
         # X-axis: chunk positions (0 to 1)
-        x = np.linspace(0, 1, len(values)) if values else [0]
+        x = np.linspace(0, 1, len(values))
 
         # Plot the line
         ax.plot(x, values, color=color, linewidth=2, marker="o", markersize=3)
@@ -273,8 +282,22 @@ class EmotionPlotter:
         for ax, (name, values, subtitle) in zip(axs_flat, axis_data):
             color = colors.get(name.lower(), "#3498db")
 
+            # Skip plotting if no data
+            if not values:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
+                ax.set_title(f"{name}\n({subtitle})", fontsize=11)
+                ax.grid(True, alpha=0.3)
+                continue
+
             # X-axis: chunk positions (0 to 1)
-            x = np.linspace(0, 1, len(values)) if values else [0]
+            x = np.linspace(0, 1, len(values))
 
             # Plot the line
             ax.plot(x, values, color=color, linewidth=2, marker="o", markersize=4)

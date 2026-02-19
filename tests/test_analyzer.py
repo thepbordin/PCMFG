@@ -1,7 +1,8 @@
 """Tests for the main PCMFG Analyzer."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from pcmfg.analyzer import PCMFGAnalyzer, analyze
 from pcmfg.config import Config
@@ -29,7 +30,9 @@ class TestPCMFGAnalyzer:
         analyzer = PCMFGAnalyzer(llm_client=mock_llm_client)
         assert analyzer.llm_client == mock_llm_client
 
-    def test_analyze_simple_text(self, mock_llm_client: MagicMock, sample_text: str) -> None:
+    def test_analyze_simple_text(
+        self, mock_llm_client: MagicMock, sample_text: str
+    ) -> None:
         """Test analyzing simple text."""
         # Set up mock responses
         mock_llm_client.call_json.side_effect = [
@@ -37,6 +40,7 @@ class TestPCMFGAnalyzer:
             {
                 "main_pairing": ["Alice", "Bob"],
                 "aliases": {"Alice": ["Ali"], "Bob": ["Robert"]},
+                "core_conflict": "They are from different worlds.",
                 "world_guidelines": ["They met at a ball."],
                 "mermaid_graph": "graph TD\n    A --> B",
             },
@@ -50,9 +54,15 @@ class TestPCMFGAnalyzer:
                         "source": "Alice",
                         "target": "Bob",
                         "scores": {
-                            "Joy": 3, "Trust": 2, "Fear": 1, "Surprise": 1,
-                            "Sadness": 1, "Disgust": 1, "Anger": 1,
-                            "Anticipation": 2, "Arousal": 2,
+                            "Joy": 3,
+                            "Trust": 2,
+                            "Fear": 1,
+                            "Surprise": 1,
+                            "Sadness": 1,
+                            "Disgust": 1,
+                            "Anger": 1,
+                            "Anticipation": 2,
+                            "Arousal": 2,
                         },
                         "justification_quote": "She felt drawn to him.",
                     },
@@ -60,9 +70,15 @@ class TestPCMFGAnalyzer:
                         "source": "Bob",
                         "target": "Alice",
                         "scores": {
-                            "Joy": 2, "Trust": 1, "Fear": 1, "Surprise": 1,
-                            "Sadness": 1, "Disgust": 1, "Anger": 1,
-                            "Anticipation": 1, "Arousal": 2,
+                            "Joy": 2,
+                            "Trust": 1,
+                            "Fear": 1,
+                            "Surprise": 1,
+                            "Sadness": 1,
+                            "Disgust": 1,
+                            "Anger": 1,
+                            "Anticipation": 1,
+                            "Arousal": 2,
                         },
                         "justification_quote": "He thought she was beautiful.",
                     },
@@ -78,13 +94,19 @@ class TestPCMFGAnalyzer:
         assert result.metadata.source == "test.txt"
         assert result.metadata.total_chunks >= 1
         assert len(result.world_builder.main_pairing) == 2
-        assert len(result.axes.intimacy) >= 1
+        # Check timeseries instead of axes (new output format)
+        assert "A_to_B" in result.timeseries
+        assert "B_to_A" in result.timeseries
+        assert len(result.timeseries["A_to_B"].Joy) >= 1
 
-    def test_analyze_creates_all_phases(self, mock_llm_client: MagicMock, sample_text: str) -> None:
+    def test_analyze_creates_all_phases(
+        self, mock_llm_client: MagicMock, sample_text: str
+    ) -> None:
         """Test that analyze creates all phase processors."""
         mock_llm_client.call_json.return_value = {
             "main_pairing": ["A", "B"],
             "aliases": {},
+            "core_conflict": "Test conflict.",
             "world_guidelines": [],
             "mermaid_graph": "",
         }
@@ -93,8 +115,7 @@ class TestPCMFGAnalyzer:
 
         # Verify phase processors are created
         assert analyzer.world_builder is not None
-        assert analyzer.normalizer is not None
-        assert analyzer.axis_mapper is not None
+        assert analyzer.synthesizer is not None
 
     def test_chunk_text_automatic(self, mock_llm_client: MagicMock) -> None:
         """Test text chunking in automatic mode."""

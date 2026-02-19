@@ -427,6 +427,18 @@ def load(novel_dir: str, output: str | None, info: bool) -> None:
     default=True,
     help="Save merged novel text",
 )
+@click.option(
+    "--resume",
+    is_flag=True,
+    default=True,
+    help="Resume from checkpoint if available",
+)
+@click.option(
+    "--no-resume",
+    is_flag=True,
+    default=False,
+    help="Start fresh, ignore existing checkpoints",
+)
 @click.pass_context
 def analyze_novel(
     ctx: click.Context,
@@ -436,6 +448,8 @@ def analyze_novel(
     start: int | None,
     end: int | None,
     save_merged: bool,
+    resume: bool,
+    no_resume: bool,
 ) -> None:
     """Load and analyze a novel from a directory structure.
 
@@ -490,11 +504,20 @@ def analyze_novel(
                 f.write(merged_text)
             console.print(f"  [dim]Merged text:[/] {merged_path}")
 
-        # Run analysis
+        # Determine resume mode
+        should_resume = resume and not no_resume
+
+        # Run analysis with checkpoint support
         console.print(f"[bold blue]Analyzing novel...[/]")
+        if should_resume:
+            console.print("  [dim]Checkpoint mode: enabled (resume if available)[/]")
 
         analyzer = PCMFGAnalyzer(config=cfg)
-        result = analyzer.analyze(merged_text, source=novel_path.name)
+        result = analyzer.analyze_with_checkpoint(
+            merged_text,
+            source=novel_path.name,
+            resume=should_resume,
+        )
 
         # Display and export results
         _display_summary(result)
@@ -508,6 +531,41 @@ def analyze_novel(
         if debug:
             console.print_exception()
         raise
+
+
+@cli.command()
+def checkpoints() -> None:
+    """List all available checkpoints."""
+    from pcmfg.checkpoint import list_checkpoints
+
+    checkpoint_list = list_checkpoints()
+
+    if not checkpoint_list:
+        console.print("[yellow]No checkpoints found.[/]")
+        return
+
+    table = Table(title="Available Checkpoints")
+    table.add_column("Source File", style="cyan")
+    table.add_column("Phase 1", style="green")
+    table.add_column("Phase 2", style="green")
+    table.add_column("Progress", style="yellow")
+    table.add_column("Updated", style="dim")
+
+    for cp in checkpoint_list:
+        phase1_status = "✓" if cp["phase1_complete"] else "○"
+        phase2_status = "✓" if cp["phase2_complete"] else "○"
+        progress = f"{cp['processed_chunks']}/{cp['total_chunks']}"
+
+        table.add_row(
+            cp["source_file"],
+            phase1_status,
+            phase2_status,
+            progress,
+            cp["updated_at"][:19] if cp["updated_at"] else "unknown",
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Checkpoints are stored in: .pcmfg_checkpoints/[/]")
 
 
 def main() -> None:

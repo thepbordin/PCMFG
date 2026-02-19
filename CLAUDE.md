@@ -57,9 +57,16 @@ INPUT TEXT (romantic narrative)
 
 ### Phase 1: World Builder (Agent 1 - LLM)
 
-**Input**: Novel summary, synopsis, or the first few chapters
+**Input**: Strategic sample of the novel (beginning, middle, and end sections) to capture full story arc context
 
 **Purpose**: Establish context and rules to prevent downstream hallucinations and catch name variations.
+
+**Strategic Sampling**: For long texts, the system samples from three sections:
+- **Beginning** (~40%): Character introductions and initial setup
+- **Middle** (~30%): Plot development and conflicts
+- **End** (~30%): Resolution and relationship outcomes
+
+This ensures the World Builder understands the complete narrative arc, not just the opening.
 
 **Tasks**:
 1. Identify the **main pairing** (two central characters of the romance)
@@ -881,6 +888,49 @@ def should_process_chunk(chunk_text: str, aliases: dict[str, list[str]]) -> bool
 - Never log input texts
 - Clear .env warnings about API key handling
 - Local-only processing when possible
+
+---
+
+## Configuration
+
+PCMFG supports configuration via YAML file (`pcmfg_config.yaml`) or programmatically.
+
+### Key Configuration Options
+
+```yaml
+# pcmfg_config.yaml example
+llm:
+  provider: openai
+  model: gpt-4o
+  temperature: 0.3
+  max_tokens: 4096
+  base_url: null  # Optional: custom API endpoint
+
+processing:
+  beat_detection: automatic  # automatic, length, or chapter
+  beat_length: 500           # Target words per beat
+  min_beat_length: 200       # Minimum words per beat
+  max_chunk_tokens: 3000     # Max tokens per LLM chunk
+  world_builder_sample_tokens: 8000  # Max tokens for world builder (strategic sampling)
+  max_concurrency: 5         # Concurrent API calls
+
+output:
+  formats: ["json", "png"]
+  include_stats: true
+  dpi: 300
+```
+
+### World Builder Sampling
+
+The `world_builder_sample_tokens` config (default: 8000) controls how much text is sampled for world building:
+
+- For short texts: Uses the entire text
+- For long texts: Strategically samples from **beginning**, **middle**, and **end** sections
+
+This ensures the World Builder captures the complete narrative arc including:
+- Character introductions (beginning)
+- Plot development (middle)  
+- Resolution and outcomes (end)
 
 ---
 

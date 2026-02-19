@@ -2,8 +2,12 @@
 
 import pytest
 
-from pcmfg.phase1.world_builder import WorldBuilder, WorldBuilderError, WORLD_BUILDER_SYSTEM_PROMPT
 from pcmfg.models.schemas import WorldBuilderOutput
+from pcmfg.phase1.world_builder import (
+    WORLD_BUILDER_SYSTEM_PROMPT,
+    WorldBuilder,
+    WorldBuilderError,
+)
 
 
 class TestWorldBuilder:
@@ -25,7 +29,9 @@ class TestWorldBuilder:
         assert isinstance(result.world_guidelines, list)
         assert isinstance(result.mermaid_graph, str)
 
-    def test_build_with_custom_response(self, mock_llm_client, sample_text: str) -> None:
+    def test_build_with_custom_response(
+        self, mock_llm_client, sample_text: str
+    ) -> None:
         """Test world building with custom LLM response."""
         mock_llm_client.call_json.return_value = {
             "main_pairing": ["Alice", "Bob"],
@@ -60,7 +66,9 @@ class TestWorldBuilder:
         assert result.world_guidelines == []
         assert result.mermaid_graph == ""
 
-    def test_build_with_too_many_characters(self, mock_llm_client, sample_text: str) -> None:
+    def test_build_with_too_many_characters(
+        self, mock_llm_client, sample_text: str
+    ) -> None:
         """Test world building with more than 2 main characters."""
         mock_llm_client.call_json.return_value = {
             "main_pairing": ["Alice", "Bob", "Charlie"],
@@ -76,7 +84,9 @@ class TestWorldBuilder:
         assert len(result.main_pairing) == 2
         assert result.main_pairing == ["Alice", "Bob"]
 
-    def test_build_with_too_few_characters(self, mock_llm_client, sample_text: str) -> None:
+    def test_build_with_too_few_characters(
+        self, mock_llm_client, sample_text: str
+    ) -> None:
         """Test world building with fewer than 2 main characters."""
         mock_llm_client.call_json.return_value = {
             "main_pairing": ["Alice"],
@@ -103,9 +113,48 @@ class TestWorldBuilder:
         """Test that the system prompt has all required elements."""
         assert "main_pairing" in WORLD_BUILDER_SYSTEM_PROMPT
         assert "aliases" in WORLD_BUILDER_SYSTEM_PROMPT
+        assert "core_conflict" in WORLD_BUILDER_SYSTEM_PROMPT
         assert "world_guidelines" in WORLD_BUILDER_SYSTEM_PROMPT
         assert "mermaid_graph" in WORLD_BUILDER_SYSTEM_PROMPT
         assert "JSON" in WORLD_BUILDER_SYSTEM_PROMPT
+
+    def test_build_with_core_conflict(self, mock_llm_client, sample_text: str) -> None:
+        """Test world building with core_conflict extraction."""
+        mock_llm_client.call_json.return_value = {
+            "main_pairing": ["Alice", "Bob"],
+            "aliases": {"Alice": ["Ali"], "Bob": ["Bobby"]},
+            "core_conflict": "Alice and Bob are from rival families who hate each other.",
+            "world_guidelines": [
+                "They met at a ball.",
+                "Their families are enemies.",
+            ],
+            "mermaid_graph": "graph TD\n    A[Alice] -->|loves| B[Bob]",
+        }
+
+        builder = WorldBuilder(mock_llm_client)
+        result = builder.build(sample_text)
+
+        assert (
+            result.core_conflict
+            == "Alice and Bob are from rival families who hate each other."
+        )
+
+    def test_build_with_missing_core_conflict(
+        self, mock_llm_client, sample_text: str
+    ) -> None:
+        """Test world building when core_conflict is missing."""
+        mock_llm_client.call_json.return_value = {
+            "main_pairing": ["Alice", "Bob"],
+            "aliases": {},
+            "world_guidelines": [],
+            "mermaid_graph": "",
+        }
+
+        builder = WorldBuilder(mock_llm_client)
+        result = builder.build(sample_text)
+
+        # Should default to empty string
+        assert result.core_conflict == ""
 
 
 class TestWorldBuilderOutput:
@@ -115,6 +164,7 @@ class TestWorldBuilderOutput:
         """Test default values for WorldBuilderOutput."""
         output = WorldBuilderOutput(main_pairing=["A", "B"])
         assert output.aliases == {}
+        assert output.core_conflict == ""
         assert output.world_guidelines == []
         assert output.mermaid_graph == ""
 
@@ -123,10 +173,12 @@ class TestWorldBuilderOutput:
         output = WorldBuilderOutput(
             main_pairing=["Alice", "Bob"],
             aliases={"Alice": ["Ali"]},
+            core_conflict="They are from rival families.",
             world_guidelines=["They met at a ball."],
             mermaid_graph="graph TD",
         )
         assert output.main_pairing == ["Alice", "Bob"]
+        assert output.core_conflict == "They are from rival families."
 
     def test_main_pairing_length_validation(self) -> None:
         """Test that main_pairing must have exactly 2 elements."""

@@ -393,7 +393,7 @@ Note: Y-axis shows 1-5 scale where 1 is baseline/neutral
 
 ## Configuration Options
 
-Configuration can be provided via command-line arguments or a config file:
+Configuration can be provided via command-line arguments or a config file (`pcmfg_config.yaml`):
 
 ```yaml
 # pcmfg_config.yaml
@@ -402,18 +402,31 @@ llm:
   model: "gpt-4o"
   temperature: 0.3
   max_tokens: 4096
-  openai_base_url: "https://api.openai.com/v1"  # Optional: custom endpoint
+  base_url: null  # Optional: custom API endpoint (e.g., OpenRouter, Azure, local LLM)
 
 processing:
-  chunk_length: 500  # words per chunk
-  min_chunk_length: 200
-  skip_empty_chunks: true  # Skip chunks with no character names
+  beat_detection: "automatic"  # automatic, length, or chapter
+  beat_length: 500  # Target words per beat (for length mode)
+  min_beat_length: 200  # Minimum words per beat
+  max_chunk_tokens: 3000  # Max tokens per LLM chunk
+  world_builder_sample_tokens: 8000  # Max tokens for world builder (strategic sampling)
+  max_concurrency: 5  # Concurrent API calls
 
 output:
-  formats: ["json", "png", "csv"]
+  formats: ["json", "png"]  # Supported: json, csv, png
   include_stats: true
   dpi: 300
 ```
+
+### World Builder Strategic Sampling
+
+The `world_builder_sample_tokens` config controls how much text is sampled for world building. For long novels, the system uses **strategic sampling** from three sections:
+
+- **Beginning** (~40%): Character introductions and initial setup
+- **Middle** (~30%): Plot development and conflicts
+- **End** (~30%): Resolution and relationship outcomes
+
+This ensures the World Builder understands the complete narrative arc, not just the opening chapters.
 
 ```bash
 python main.py analyze novel.txt --config pcmfg_config.yaml

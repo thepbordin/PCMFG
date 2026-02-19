@@ -282,3 +282,69 @@ def iter_chunks(text: str, max_tokens: int = 3000) -> Iterator[tuple[int, str]]:
     chunks = chunk_text_by_length(text, max_tokens)
     for i, chunk in enumerate(chunks):
         yield i, chunk
+
+
+def get_strategic_sample(text: str, max_tokens: int = 8000) -> str:
+    """Get a strategic sample of text for world building.
+
+    Samples from beginning, middle, and end of text to capture:
+    - Character introductions (beginning)
+    - Plot development and conflicts (middle)
+    - Resolution and relationship outcomes (end)
+
+    Args:
+        text: Full input text.
+        max_tokens: Maximum tokens for the combined sample.
+
+    Returns:
+        Strategic text sample.
+    """
+    total_tokens = estimate_tokens(text)
+
+    # If text is short enough, use it all
+    if total_tokens <= max_tokens:
+        return text
+
+    # Calculate how much to allocate to each section
+    # Weight: 40% beginning, 30% middle, 30% end
+    section_tokens = max_tokens // 3
+    beginning_tokens = int(section_tokens * 1.2)  # Give beginning slightly more
+
+    words = text.split()
+    total_words = len(words)
+
+    # Calculate word positions for each section
+    words_per_token = total_words / total_tokens
+    beginning_words = int(beginning_tokens * words_per_token)
+    middle_words = int(section_tokens * words_per_token)
+    end_words = int(section_tokens * words_per_token)
+
+    # Extract sections
+    beginning_start = 0
+    beginning_end = min(beginning_words, total_words)
+
+    middle_start = total_words // 2 - middle_words // 2
+    middle_end = min(middle_start + middle_words, total_words)
+
+    end_start = max(0, total_words - end_words)
+    end_end = total_words
+
+    # Build sample with section markers
+    sections = []
+
+    # Beginning section
+    if beginning_end > 0:
+        beginning_text = " ".join(words[beginning_start:beginning_end])
+        sections.append(f"[BEGINNING]\n{beginning_text}")
+
+    # Middle section
+    if middle_end > middle_start:
+        middle_text = " ".join(words[middle_start:middle_end])
+        sections.append(f"[MIDDLE]\n{middle_text}")
+
+    # End section
+    if end_end > end_start and end_start > middle_end:
+        end_text = " ".join(words[end_start:end_end])
+        sections.append(f"[END]\n{end_text}")
+
+    return "\n\n---\n\n".join(sections)
