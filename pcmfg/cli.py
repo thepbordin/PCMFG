@@ -217,7 +217,7 @@ def _export_results(
     config: Config,
     no_plot: bool,
 ) -> None:
-    """Export analysis results to files."""
+    """Export analysis results to files including all visualization types."""
     # Export JSON
     if format in ["json", "both"]:
         json_path = output_dir / "emotional_trajectory.json"
@@ -234,25 +234,48 @@ def _export_results(
         plotter.export_data(result.timeseries, csv_path, format="csv")
         console.print(f"  [dim]CSV:[/] {csv_path}")
 
-    # Generate plot
+    # Generate all plots
     if not no_plot and "png" in config.output.formats:
-        plot_path = output_dir / "emotional_trajectory.png"
         plotter = EmotionPlotter(dpi=config.output.dpi)
-        # Use the new plot_timeseries for raw 9 emotions
+        main_pairing = result.world_builder.main_pairing
+        source = result.metadata.source or "Unknown"
+
+        # 1. Side-by-side plot (original)
+        plot_path = output_dir / "emotional_trajectory.png"
         plotter.plot_timeseries(
             result.timeseries,
             plot_path,
-            title=f"Emotional Trajectory: {result.metadata.source}",
-            main_pairing=result.world_builder.main_pairing,
+            title=f"Emotional Trajectory: {source}",
+            main_pairing=main_pairing,
         )
-        console.print(f"  [dim]Plot:[/] {plot_path}")
+        console.print(f"  [dim]Side-by-side plot:[/] {plot_path}")
+
+        # 2. Directional comparison plot (A→B vs B→A on same plot)
+        comparison_path = output_dir / "emotional_directional_comparison.png"
+        plotter.plot_directional_comparison(
+            result.timeseries,
+            comparison_path,
+            title=f"Directional Comparison: {main_pairing[0]} vs {main_pairing[1]}",
+            main_pairing=main_pairing,
+        )
+        console.print(f"  [dim]Directional comparison:[/] {comparison_path}")
+
+        # 3. Gap analysis plot (A-B difference)
+        gap_path = output_dir / "emotional_gap_analysis.png"
+        plotter.plot_emotion_gap(
+            result.timeseries,
+            gap_path,
+            title=f"Emotional Gap: {main_pairing[0]} - {main_pairing[1]}",
+            main_pairing=main_pairing,
+        )
+        console.print(f"  [dim]Gap analysis:[/] {gap_path}")
 
 
 def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
     """Generate a statistical analysis report."""
     import numpy as np
 
-    from pcmfg.models.schemas import EMOTION_LIST
+    from pcmfg.models.schemas import BASE_EMOTIONS
 
     report_path = output_dir / "analysis_report.md"
 
@@ -300,7 +323,7 @@ def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
 
     a_to_b = result.timeseries.get("A_to_B")
     if a_to_b:
-        for emotion in EMOTION_LIST:
+        for emotion in BASE_EMOTIONS:
             values = getattr(a_to_b, emotion, [])
             if values:
                 arr = np.array(values)
@@ -324,7 +347,7 @@ def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
 
     b_to_a = result.timeseries.get("B_to_A")
     if b_to_a:
-        for emotion in EMOTION_LIST:
+        for emotion in BASE_EMOTIONS:
             values = getattr(b_to_a, emotion, [])
             if values:
                 arr = np.array(values)
@@ -343,7 +366,7 @@ def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
     )
 
     if a_to_b:
-        for emotion in EMOTION_LIST:
+        for emotion in BASE_EMOTIONS:
             values = getattr(a_to_b, emotion, [])
             if values and len(values) >= 2:
                 # Linear regression for trend
@@ -367,7 +390,7 @@ def _generate_stats_report(result: AnalysisResult, output_dir: Path) -> None:
     )
 
     if b_to_a:
-        for emotion in EMOTION_LIST:
+        for emotion in BASE_EMOTIONS:
             values = getattr(b_to_a, emotion, [])
             if values and len(values) >= 2:
                 x = np.arange(len(values))

@@ -140,6 +140,74 @@ def chunk_text_by_length(
     return chunks
 
 
+def chunk_text_by_paragraph(
+    text: str,
+    max_tokens: int = 3000,
+    min_chunk_tokens: int = 50,
+) -> list[str]:
+    """Split text into chunks, one paragraph per chunk.
+
+    Each paragraph (separated by double newlines) becomes its own chunk.
+    Useful for short texts or when you want fine-grained beat detection.
+
+    Args:
+        text: Input text string.
+        max_tokens: Maximum tokens per chunk (splits long paragraphs by sentences).
+        min_chunk_tokens: Minimum tokens per chunk (filters out very short paragraphs).
+
+    Returns:
+        List of text chunks, one per paragraph.
+    """
+    if not text:
+        return []
+
+    # Clean text first
+    text = clean_text(text)
+
+    # Estimate word limits
+    max_words = int(max_tokens / 1.3)
+    min_words = int(min_chunk_tokens / 1.3)
+
+    # Split into paragraphs
+    paragraphs = text.split("\n\n")
+
+    chunks: list[str] = []
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+
+        para_words = len(para.split())
+
+        # Skip very short paragraphs
+        if para_words < min_words:
+            continue
+
+        # If paragraph exceeds max, split by sentences
+        if para_words > max_words:
+            sentences = _split_sentences(para)
+            current_chunk: list[str] = []
+            current_words = 0
+
+            for sentence in sentences:
+                sent_words = len(sentence.split())
+                if current_words + sent_words > max_words and current_chunk:
+                    chunks.append(" ".join(current_chunk))
+                    current_chunk = [sentence]
+                    current_words = sent_words
+                else:
+                    current_chunk.append(sentence)
+                    current_words += sent_words
+
+            if current_chunk:
+                chunks.append(" ".join(current_chunk))
+        else:
+            chunks.append(para)
+
+    return chunks
+
+
 def chunk_text_by_chapter(
     text: str,
     max_tokens: int = 3000,

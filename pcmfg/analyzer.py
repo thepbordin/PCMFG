@@ -29,6 +29,7 @@ from pcmfg.phase3.synthesizer import Synthesizer
 from pcmfg.utils.text_processing import (
     chunk_text_by_chapter,
     chunk_text_by_length,
+    chunk_text_by_paragraph,
     clean_text,
     estimate_tokens,
     get_strategic_sample,
@@ -426,7 +427,8 @@ class PCMFGAnalyzer:
         )
 
         try:
-            return self.world_builder.build(sample_text)
+            hint = self.config.processing.world_builder_hint
+            return self.world_builder.build(sample_text, hint=hint)
         except WorldBuilderError as e:
             logger.error(f"World builder failed: {e}")
             # Return minimal world builder output with default aliases
@@ -564,6 +566,12 @@ class PCMFGAnalyzer:
 
         if beat_detection == "chapter":
             return chunk_text_by_chapter(text, max_tokens)
+        elif beat_detection == "paragraph":
+            return chunk_text_by_paragraph(
+                text,
+                max_tokens=max_tokens,
+                min_chunk_tokens=self.config.processing.min_beat_length,
+            )
         elif beat_detection == "length":
             return chunk_text_by_length(
                 text,
