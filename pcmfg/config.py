@@ -38,6 +38,11 @@ class ProcessingConfig(BaseModel):
     max_chunk_tokens: int = Field(
         default=3000, ge=500, description="Maximum tokens per LLM chunk"
     )
+    world_builder_sample_tokens: int = Field(
+        default=8000,
+        ge=1000,
+        description="Maximum tokens for world builder sample (strategic sampling from beginning, middle, end)",
+    )
     max_concurrency: int = Field(
         default=5,
         ge=1,

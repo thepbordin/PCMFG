@@ -7,6 +7,7 @@ Extracts directed emotions from text chunks:
 - Justification quotes
 """
 
+import logging
 from typing import Any
 
 from pydantic import ValidationError
@@ -19,6 +20,30 @@ from pcmfg.models.schemas import (
     DirectedEmotionScores,
     WorldBuilderOutput,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def should_process_chunk(chunk_text: str, aliases: dict[str, list[str]]) -> bool:
+    """Check if chunk contains any character names from aliases.
+
+    This is a token efficiency optimization: skip LLM calls for chunks
+    that don't contain any relevant character names.
+
+    Args:
+        chunk_text: Text to check.
+        aliases: Dictionary mapping character names to their aliases.
+
+    Returns:
+        True if chunk should be processed, False if it should be skipped.
+    """
+    all_names: set[str] = set()
+    for main_name, alias_list in aliases.items():
+        all_names.add(main_name)
+        all_names.update(alias_list)
+
+    chunk_lower = chunk_text.lower()
+    return any(name.lower() in chunk_lower for name in all_names)
 
 
 def build_emotion_extractor_system_prompt(world: WorldBuilderOutput) -> str:
@@ -34,7 +59,13 @@ def build_emotion_extractor_system_prompt(world: WorldBuilderOutput) -> str:
     aliases_str = "\n".join(
         f"    - {name}: {', '.join(aliases)}" for name, aliases in world.aliases.items()
     )
-    guidelines_str = "\n".join(f"  - {g}" for g in world.world_guidelines[:5])  # Limit to 5 key facts
+
+    # Include core_conflict if available
+    core_conflict_str = world.core_conflict if world.core_conflict else "Not specified"
+
+    guidelines_str = "\n".join(
+        f"  - {g}" for g in world.world_guidelines[:5]
+    )  # Limit to 5 key facts
 
     return f"""You are an expert computational literary analyst extracting granular, directed emotional data from a romance novel.
 
@@ -42,6 +73,7 @@ def build_emotion_extractor_system_prompt(world: WorldBuilderOutput) -> str:
 * Main Pairing: {main_pairing_str}
 * Aliases:
 {aliases_str}
+* Core Conflict: {core_conflict_str}
 * World Guidelines:
 {guidelines_str}
 
@@ -118,7 +150,9 @@ class EmotionExtractor:
         self.world = world
         self._system_prompt = build_emotion_extractor_system_prompt(world)
 
-    def extract(self, text_chunk: str, chunk_id: int, position: float = 0.0) -> ChunkAnalysis:
+    def extract(
+        self, text_chunk: str, chunk_id: int, position: float = 0.0
+    ) -> ChunkAnalysis:
         """Extract directed emotions from a text chunk.
 
         Args:
@@ -182,7 +216,9 @@ class EmotionExtractor:
 
         # Ensure required fields exist
         if "chunk_main_pov" not in response:
-            response["chunk_main_pov"] = self.world.main_pairing[0] if self.world.main_pairing else "Unknown"
+            response["chunk_main_pov"] = (
+                self.world.main_pairing[0] if self.world.main_pairing else "Unknown"
+            )
         if "characters_present" not in response:
             response["characters_present"] = self.world.main_pairing[:2]
         if "scene_summary" not in response:
@@ -191,7 +227,9 @@ class EmotionExtractor:
         try:
             return ChunkAnalysis(**response)
         except ValidationError as e:
-            return self._create_default_chunk(chunk_id, position, f"Validation error: {e}")
+            return self._create_default_chunk(
+                chunk_id, position, f"Validation error: {e}"
+            )
 
     def _parse_directed_emotion(self, data: dict) -> DirectedEmotion | None:
         """Parse a single directed emotion from response data.
@@ -265,7 +303,9 @@ class EmotionExtractor:
         return ChunkAnalysis(
             chunk_id=chunk_id,
             position=position,
-            chunk_main_pov=self.world.main_pairing[0] if self.world.main_pairing else "Unknown",
+            chunk_main_pov=self.world.main_pairing[0]
+            if self.world.main_pairing
+            else "Unknown",
             characters_present=self.world.main_pairing[:2],
             directed_emotions=default_emotions,
             scene_summary="[Extraction failed]",

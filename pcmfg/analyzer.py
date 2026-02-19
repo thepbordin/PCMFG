@@ -3,9 +3,9 @@
 This module provides the main entry point for analyzing romantic narratives
 through the complete PCMFG pipeline:
 
-1. Phase 1: Extraction - World building and emotion extraction
-2. Phase 2: Normalization - Validation and aggregation
-3. Phase 3: Axis Mapping - Romance axis computation
+1. Phase 1: World Builder (Agent 1 - LLM)
+2. Phase 2: Emotion Extraction (Agent 2 - LLM loop)
+3. Phase 3: Synthesis (Deterministic Python - forward fill + time-series)
 """
 
 import logging
@@ -22,10 +22,9 @@ from pcmfg.models.schemas import (
     ChunkAnalysis,
     WorldBuilderOutput,
 )
-from pcmfg.phase1.emotion_extractor import EmotionExtractor
+from pcmfg.phase1.emotion_extractor import EmotionExtractor, should_process_chunk
 from pcmfg.phase1.world_builder import WorldBuilder, WorldBuilderError
-from pcmfg.phase2.normalizer import EmotionNormalizer
-from pcmfg.phase3.axis_mapper import AxisMapper
+from pcmfg.phase3.synthesizer import Synthesizer
 from pcmfg.utils.text_processing import (
     chunk_text_by_chapter,
     chunk_text_by_length,
@@ -40,9 +39,9 @@ class PCMFGAnalyzer:
     """Main orchestrator for the PCMFG analysis pipeline.
 
     Coordinates all three phases:
-    - Phase 1: Extraction (World Builder + Emotion Extractor)
-    - Phase 2: Normalization (validation)
-    - Phase 3: Axis Mapping (romance axes)
+    - Phase 1: World Builder (Agent 1 - LLM)
+    - Phase 2: Emotion Extraction (Agent 2 - LLM loop)
+    - Phase 3: Synthesis (Deterministic Python)
     """
 
     def __init__(
@@ -72,8 +71,7 @@ class PCMFGAnalyzer:
 
         # Initialize phase processors
         self.world_builder = WorldBuilder(self.llm_client)
-        self.normalizer = EmotionNormalizer()
-        self.axis_mapper = AxisMapper()
+        self.synthesizer = Synthesizer()
 
         # Emotion extractor is created after world building
         self.emotion_extractor: EmotionExtractor | None = None
@@ -122,35 +120,30 @@ class PCMFGAnalyzer:
         """Analyze a romantic narrative text.
 
         Runs the complete 3-phase pipeline:
-        1. Extraction: World building + emotion extraction
-        2. Normalization: Validation
-        3. Axis Mapping: Compute romance axes
+        1. Phase 1: World Builder (Agent 1)
+        2. Phase 2: Emotion Extraction (Agent 2 loop)
+        3. Phase 3: Synthesis (forward fill + time-series)
 
         Args:
             text: Input text to analyze.
             source: Source identifier (filename, etc.).
 
         Returns:
-            AnalysisResult with complete analysis data.
+            AnalysisResult with complete analysis data including raw emotion time-series.
         """
         logger.info("Starting PCMFG analysis")
 
         # Clean input text
         text = clean_text(text)
 
-        # Phase 1: Extraction
-        logger.info("Phase 1: Extraction")
+        # Phase 1: World Builder (Agent 1)
+        logger.info("Phase 1: World Builder")
         world = self._run_world_builder(text)
         self.emotion_extractor = EmotionExtractor(self.llm_client, world)
+
+        # Phase 2: Emotion Extraction (Agent 2 loop)
+        logger.info("Phase 2: Emotion Extraction")
         chunks = self._extract_emotions(text)
-
-        # Phase 2: Normalization
-        logger.info("Phase 2: Normalization")
-        chunks = self.normalizer.normalize_all(chunks)
-
-        # Phase 3: Axis Mapping
-        logger.info("Phase 3: Axis Mapping")
-        axes = self.axis_mapper.map_chunks(chunks)
 
         # Build metadata
         metadata = AnalysisMetadata(
@@ -161,14 +154,13 @@ class PCMFGAnalyzer:
             provider=self.config.llm.provider,
         )
 
+        # Phase 3: Synthesis (forward fill + time-series)
+        logger.info("Phase 3: Synthesis")
+        result = self.synthesizer.synthesize(chunks, world, metadata)
+
         logger.info(f"Analysis complete: {len(chunks)} chunks processed")
 
-        return AnalysisResult(
-            metadata=metadata,
-            world_builder=world,
-            chunks=chunks,
-            axes=axes,
-        )
+        return result
 
     def _run_world_builder(self, text: str) -> WorldBuilderOutput:
         """Run the world builder agent.
@@ -219,6 +211,8 @@ class PCMFGAnalyzer:
         """Extract emotions from all text chunks.
 
         Uses parallel processing with configurable concurrency.
+        Also implements token efficiency optimization by skipping chunks
+        that don't contain any character names from the aliases list.
 
         Args:
             text: Full input text.
@@ -226,7 +220,7 @@ class PCMFGAnalyzer:
         Returns:
             List of ChunkAnalysis objects.
         """
-        from pcmfg.utils.parallel import ParallelProcessor, ProcessingResult
+        from pcmfg.utils.parallel import ParallelProcessor
 
         # Chunk text based on config
         chunks_text = self._chunk_text(text)
@@ -235,10 +229,23 @@ class PCMFGAnalyzer:
         # emotion_extractor is guaranteed to be set after _run_world_builder
         assert self.emotion_extractor is not None
         extractor = self.emotion_extractor  # Local reference for type safety
+        world = extractor.world
 
-        # Create processor function
-        def process_chunk(args: tuple[str, int, float]) -> ChunkAnalysis:
+        # Track skipped chunks for logging
+        skipped_count = 0
+
+        # Create processor function with chunk filtering
+        def process_chunk(args: tuple[str, int, float]) -> ChunkAnalysis | None:
+            nonlocal skipped_count
             chunk_text, chunk_id, position = args
+
+            # Token efficiency: skip chunks with no relevant characters
+            if not should_process_chunk(chunk_text, world.aliases):
+                logger.debug(f"Skipping chunk {chunk_id}: no character names found")
+                skipped_count += 1
+                # Return None for skipped chunks - we'll create default chunks later
+                return None
+
             return extractor.extract(chunk_text, chunk_id, position)
 
         # Prepare chunk data
@@ -269,17 +276,26 @@ class PCMFGAnalyzer:
 
         results = processor.process(chunk_items)
 
-        # Extract successful results, create defaults for failures
+        if skipped_count > 0:
+            logger.info(f"Skipped {skipped_count} chunks (no character names)")
+
+        # Extract successful results, create defaults for failures/skipped
         chunk_analyses: list[ChunkAnalysis] = []
         for result in results:
             if result.success and result.result is not None:
                 chunk_analyses.append(result.result)
             else:
-                # Create default chunk for failed extraction
-                default_chunk = self.emotion_extractor._create_default_chunk(
+                # Create default chunk for failed/skipped extraction
+                position = result.index / total_chunks if total_chunks > 0 else 0.0
+                error_msg = (
+                    str(result.error)
+                    if result.error
+                    else "Skipped (no character names)"
+                )
+                default_chunk = extractor._create_default_chunk(
                     result.index,
-                    result.index / total_chunks if total_chunks > 0 else 0.0,
-                    str(result.error) if result.error else "Unknown error",
+                    position,
+                    error_msg,
                 )
                 chunk_analyses.append(default_chunk)
 

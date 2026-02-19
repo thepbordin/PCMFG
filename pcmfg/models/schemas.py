@@ -56,11 +56,15 @@ class DirectedEmotionScores(BaseModel):
     """
 
     Joy: EmotionScore = Field(default=1, description="Happiness, pleasure, delight")
-    Trust: EmotionScore = Field(default=1, description="Safety, reliance, vulnerability")
+    Trust: EmotionScore = Field(
+        default=1, description="Safety, reliance, vulnerability"
+    )
     Fear: EmotionScore = Field(default=1, description="Panic, dread, terror, anxiety")
     Surprise: EmotionScore = Field(default=1, description="Astonishment, shock")
     Sadness: EmotionScore = Field(default=1, description="Grief, sorrow, despair")
-    Disgust: EmotionScore = Field(default=1, description="Revulsion, aversion, contempt")
+    Disgust: EmotionScore = Field(
+        default=1, description="Revulsion, aversion, contempt"
+    )
     Anger: EmotionScore = Field(default=1, description="Fury, rage, frustration")
     Anticipation: EmotionScore = Field(
         default=1, description="Looking forward to, expecting, plotting"
@@ -128,6 +132,7 @@ class WorldBuilderOutput(BaseModel):
     Extracts narrative scaffolding and world context:
     - Main pairing identification
     - Character aliases
+    - Core conflict (single sentence describing central tension)
     - World guidelines (facts about the story world)
     - Relationship graph (Mermaid.js syntax)
     """
@@ -141,6 +146,10 @@ class WorldBuilderOutput(BaseModel):
     aliases: dict[str, list[str]] = Field(
         default_factory=dict, description="Character name to aliases mapping"
     )
+    core_conflict: str = Field(
+        default="",
+        description="A single sentence describing the central romantic tension",
+    )
     world_guidelines: list[str] = Field(
         default_factory=list, description="Discrete facts about the world"
     )
@@ -148,18 +157,15 @@ class WorldBuilderOutput(BaseModel):
 
 
 # =============================================================================
-# Axis Values (Phase 3 Output)
+# Axis Values (Phase 3 Output) - DEPRECATED
 # =============================================================================
 
 
 class AxisValues(BaseModel):
-    """Computed romance axis values.
+    """Computed romance axis values - DEPRECATED.
 
-    Four axes computed from base emotions:
-    - Intimacy: (Trust + Joy) / 2
-    - Passion: (Arousal + Anticipation + Joy) / 3
-    - Hostility: (Anger + Disgust + Sadness) / 3
-    - Anxiety: (Fear + Surprise + Sadness) / 3
+    This class is kept for backward compatibility but is no longer used
+    in the main pipeline. The new output uses raw 9 emotion time-series.
     """
 
     intimacy: AxisValue = Field(description="Emotional closeness, trust, vulnerability")
@@ -171,12 +177,41 @@ class AxisValues(BaseModel):
 
 
 class AxesTimeSeries(BaseModel):
-    """Time series data for all four romance axes."""
+    """Time series data for all four romance axes - DEPRECATED."""
 
     intimacy: list[float] = Field(default_factory=list)
     passion: list[float] = Field(default_factory=list)
     hostility: list[float] = Field(default_factory=list)
     anxiety: list[float] = Field(default_factory=list)
+
+
+# =============================================================================
+# Emotion Time-Series (New Phase 3 Output)
+# =============================================================================
+
+
+class EmotionTimeSeries(BaseModel):
+    """Raw emotion time-series for a directed relationship.
+
+    Contains the 9 base emotion values over time for one direction
+    (e.g., A→B or B→A). All values use the 1-5 scale where 1 is baseline.
+    """
+
+    Joy: list[float] = Field(default_factory=list, description="Happiness trajectory")
+    Trust: list[float] = Field(default_factory=list, description="Trust trajectory")
+    Fear: list[float] = Field(default_factory=list, description="Fear trajectory")
+    Surprise: list[float] = Field(
+        default_factory=list, description="Surprise trajectory"
+    )
+    Sadness: list[float] = Field(default_factory=list, description="Sadness trajectory")
+    Disgust: list[float] = Field(default_factory=list, description="Disgust trajectory")
+    Anger: list[float] = Field(default_factory=list, description="Anger trajectory")
+    Anticipation: list[float] = Field(
+        default_factory=list, description="Anticipation trajectory"
+    )
+    Arousal: list[float] = Field(default_factory=list, description="Arousal trajectory")
+
+    model_config = ConfigDict(frozen=True)
 
 
 # =============================================================================
@@ -207,12 +242,17 @@ class AnalysisResult(BaseModel):
 
     Contains:
     - Metadata about the analysis run
-    - World builder output (main pairing, aliases, etc.)
+    - World builder output (main pairing, aliases, core_conflict, etc.)
     - Chunk-by-chunk analysis results
-    - Time series data for the four romance axes
+    - Raw emotion time-series for both directions (A→B and B→A)
     """
 
     metadata: AnalysisMetadata = Field(default_factory=AnalysisMetadata)
     world_builder: WorldBuilderOutput = Field(default_factory=WorldBuilderOutput)
     chunks: list[ChunkAnalysis] = Field(default_factory=list)
+    timeseries: dict[str, EmotionTimeSeries] = Field(
+        default_factory=dict,
+        description="Raw emotion time-series for each direction (A_to_B, B_to_A)",
+    )
+    # Deprecated: kept for backward compatibility
     axes: AxesTimeSeries = Field(default_factory=AxesTimeSeries)

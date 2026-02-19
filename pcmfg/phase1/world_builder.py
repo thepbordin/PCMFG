@@ -23,8 +23,9 @@ Read the provided text. Identify the primary characters, their aliases, the fund
 ### EXTRACTION RULES
 1. "main_pairing": The TWO central characters of the romance.
 2. "aliases": A comprehensive dictionary mapping the main and key secondary characters to all their nicknames, titles, and last names used in the text (e.g., "Elizabeth": ["Lizzy", "Miss Bennet"]).
-3. "world_guidelines": A list of discrete facts outlining the core conflict, the current status quo, and vital backstory. Break complex lore into simple, individual bullet points.
-4. "mermaid_graph": Create a Mermaid.js flowchart (graph TD) mapping the relationships between the main pairing and key secondary characters. Use labeled arrows to define the relationship (e.g., A -->|Political Marriage| B; B -->|Secretly Hates| C).
+3. "core_conflict": A single sentence describing the central romantic tension or obstacle between the main pairing (e.g., "Elizabeth's prejudice clashes with Darcy's pride until they overcome their misconceptions.").
+4. "world_guidelines": A list of discrete facts outlining the current status quo and vital backstory. Break complex lore into simple, individual bullet points.
+5. "mermaid_graph": Create a Mermaid.js flowchart (graph TD) mapping the relationships between the main pairing and key secondary characters. Use labeled arrows to define the relationship (e.g., A -->|Political Marriage| B; B -->|Secretly Hates| C).
 
 ### REQUIRED JSON SCHEMA
 {
@@ -33,6 +34,7 @@ Read the provided text. Identify the primary characters, their aliases, the fund
     "Full Name 1": ["Alias A", "Alias B", "Title"],
     "Full Name 2": ["Alias C", "Alias D"]
   },
+  "core_conflict": "A single sentence describing the central romantic tension or obstacle.",
   "world_guidelines": [
     "Fact 1: They were forced into a political marriage.",
     "Fact 2: Character A lost his memory in an accident.",
@@ -72,7 +74,9 @@ class WorldBuilder:
         Raises:
             WorldBuilderError: If extraction fails.
         """
-        user_prompt = f"Analyze the following text and extract the world information:\n\n{text}"
+        user_prompt = (
+            f"Analyze the following text and extract the world information:\n\n{text}"
+        )
 
         try:
             response = self.llm_client.call_json(
@@ -114,6 +118,11 @@ class WorldBuilder:
             aliases = response.get("aliases", {})
             if not isinstance(aliases, dict):
                 response["aliases"] = {}
+
+            # Ensure core_conflict is a string
+            core_conflict = response.get("core_conflict", "")
+            if not isinstance(core_conflict, str):
+                response["core_conflict"] = ""
 
             # Ensure world_guidelines is a list
             guidelines = response.get("world_guidelines", [])
