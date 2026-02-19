@@ -238,7 +238,6 @@ class EmotionPlotter:
                     label=label_a_to_b,
                     alpha=0.9,
                 )
-                ax.fill_between(x_a, values_a_to_b, alpha=0.15, color=color_a_to_b)
 
             # Plot B→A direction
             if len(values_b_to_a) > 0:
@@ -252,7 +251,6 @@ class EmotionPlotter:
                     label=label_b_to_a,
                     alpha=0.9,
                 )
-                ax.fill_between(x_b, values_b_to_a, alpha=0.15, color=color_b_to_a)
 
             # Baseline reference line
             ax.axhline(
@@ -263,28 +261,6 @@ class EmotionPlotter:
                 alpha=0.7,
                 label="Baseline",
             )
-
-            # Add shaded region where emotions diverge (asymmetry indicator)
-            if len(values_a_to_b) > 0 and len(values_b_to_a) > 0:
-                min_len = min(len(values_a_to_b), len(values_b_to_a))
-                if min_len > 1:
-                    diff = np.abs(
-                        np.array(values_a_to_b[:min_len])
-                        - np.array(values_b_to_a[:min_len])
-                    )
-                    x_diff = np.linspace(0, 1, min_len)
-                    # Highlight areas of significant asymmetry
-                    asymmetry_mask = diff > 0.5
-                    if np.any(asymmetry_mask):
-                        ax.fill_between(
-                            x_diff,
-                            0.5,
-                            5.5,
-                            where=asymmetry_mask,
-                            alpha=0.05,
-                            color="purple",
-                            label="_nolegend_",
-                        )
 
             # Formatting
             ax.set_ylim(0.5, 5.5)
