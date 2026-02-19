@@ -172,6 +172,279 @@ class EmotionPlotter:
         # Grid
         ax.grid(True, alpha=0.3)
 
+    def plot_directional_comparison(
+        self,
+        timeseries: dict[str, EmotionTimeSeries],
+        output_path: str | Path,
+        title: str = "Emotional Trajectory: Directional Comparison",
+        main_pairing: list[str] | None = None,
+    ) -> None:
+        """Plot A→B vs B→A on same plot for each emotion to show relationship dynamics.
+
+        This visualization reveals the asymmetry in emotions between characters,
+        highlighting areas of mutual feeling vs one-sided emotion.
+
+        Args:
+            timeseries: Dictionary with "A_to_B" and "B_to_A" EmotionTimeSeries.
+            output_path: Path to save the output image.
+            title: Title for the overall figure.
+            main_pairing: Optional [Character A, Character B] names for labels.
+        """
+        a_to_b = timeseries.get("A_to_B")
+        b_to_a = timeseries.get("B_to_A")
+
+        if a_to_b is None and b_to_a is None:
+            raise ValueError("At least one direction must have time-series data")
+
+        # Create labels
+        if main_pairing and len(main_pairing) >= 2:
+            label_a_to_b = f"{main_pairing[0]} → {main_pairing[1]}"
+            label_b_to_a = f"{main_pairing[1]} → {main_pairing[0]}"
+        else:
+            label_a_to_b = "A → B"
+            label_b_to_a = "B → A"
+
+        # Create 3×3 grid for 9 emotions
+        fig, axs = plt.subplots(3, 3, figsize=(16, 14))
+        fig.suptitle(title, fontsize=16, fontweight="bold")
+
+        axs_flat = axs.flatten()
+
+        # Color scheme: warm for A→B, cool for B→A
+        color_a_to_b = "#e74c3c"  # Red/warm
+        color_b_to_a = "#3498db"  # Blue/cool
+
+        for i, emotion in enumerate(EMOTION_LIST):
+            ax = axs_flat[i]
+            config = EMOTION_CONFIG[emotion]
+
+            # Get values for both directions
+            values_a_to_b = getattr(a_to_b, emotion, []) if a_to_b else []
+            values_b_to_a = getattr(b_to_a, emotion, []) if b_to_a else []
+
+            # X-axis: narrative progress
+            x_a = np.linspace(0, 1, len(values_a_to_b)) if values_a_to_b else []
+            x_b = np.linspace(0, 1, len(values_b_to_a)) if values_b_to_a else []
+
+            # Plot A→B direction
+            if len(values_a_to_b) > 0:
+                ax.plot(
+                    x_a,
+                    values_a_to_b,
+                    color=color_a_to_b,
+                    linewidth=2.5,
+                    marker="o",
+                    markersize=3,
+                    label=label_a_to_b,
+                    alpha=0.9,
+                )
+                ax.fill_between(x_a, values_a_to_b, alpha=0.15, color=color_a_to_b)
+
+            # Plot B→A direction
+            if len(values_b_to_a) > 0:
+                ax.plot(
+                    x_b,
+                    values_b_to_a,
+                    color=color_b_to_a,
+                    linewidth=2.5,
+                    marker="s",
+                    markersize=3,
+                    label=label_b_to_a,
+                    alpha=0.9,
+                )
+                ax.fill_between(x_b, values_b_to_a, alpha=0.15, color=color_b_to_a)
+
+            # Baseline reference line
+            ax.axhline(
+                y=1,
+                color="gray",
+                linestyle="--",
+                linewidth=1.5,
+                alpha=0.7,
+                label="Baseline",
+            )
+
+            # Add shaded region where emotions diverge (asymmetry indicator)
+            if len(values_a_to_b) > 0 and len(values_b_to_a) > 0:
+                min_len = min(len(values_a_to_b), len(values_b_to_a))
+                if min_len > 1:
+                    diff = np.abs(
+                        np.array(values_a_to_b[:min_len])
+                        - np.array(values_b_to_a[:min_len])
+                    )
+                    x_diff = np.linspace(0, 1, min_len)
+                    # Highlight areas of significant asymmetry
+                    asymmetry_mask = diff > 0.5
+                    if np.any(asymmetry_mask):
+                        ax.fill_between(
+                            x_diff,
+                            0.5,
+                            5.5,
+                            where=asymmetry_mask,
+                            alpha=0.05,
+                            color="purple",
+                            label="_nolegend_",
+                        )
+
+            # Formatting
+            ax.set_ylim(0.5, 5.5)
+            ax.set_yticks([1, 2, 3, 4, 5])
+            ax.set_yticklabels(
+                ["1\n(Baseline)", "2", "3", "4", "5\n(Extreme)"], fontsize=8
+            )
+            ax.set_xlim(0, 1)
+            ax.set_xlabel("Narrative Progress", fontsize=9)
+            ax.set_title(
+                f"{emotion}\n({config['description']})",
+                fontsize=11,
+                fontweight="bold",
+            )
+            ax.set_ylabel("Intensity", fontsize=9)
+            ax.grid(True, alpha=0.3)
+            ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+        # Save the figure
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=self.dpi, bbox_inches="tight")
+        plt.close(fig)
+
+    def plot_emotion_gap(
+        self,
+        timeseries: dict[str, EmotionTimeSeries],
+        output_path: str | Path,
+        title: str = "Emotional Gap Analysis",
+        main_pairing: list[str] | None = None,
+    ) -> None:
+        """Plot the difference (gap) between A→B and B→A for each emotion.
+
+        Positive values = A feels more than B
+        Negative values = B feels more than A
+        Zero = mutual/equal feeling
+
+        Args:
+            timeseries: Dictionary with "A_to_B" and "B_to_A" EmotionTimeSeries.
+            output_path: Path to save the output image.
+            title: Title for the overall figure.
+            main_pairing: Optional [Character A, Character B] names for labels.
+        """
+        a_to_b = timeseries.get("A_to_B")
+        b_to_a = timeseries.get("B_to_A")
+
+        if a_to_b is None or b_to_a is None:
+            raise ValueError("Both directions must have time-series data")
+
+        # Create 3×3 grid for 9 emotions
+        fig, axs = plt.subplots(3, 3, figsize=(16, 14))
+        fig.suptitle(title, fontsize=16, fontweight="bold")
+
+        axs_flat = axs.flatten()
+
+        # Color scheme
+        color_positive = "#e74c3c"  # Red - A feels more
+        color_negative = "#3498db"  # Blue - B feels more
+
+        for i, emotion in enumerate(EMOTION_LIST):
+            ax = axs_flat[i]
+            config = EMOTION_CONFIG[emotion]
+
+            values_a = np.array(getattr(a_to_b, emotion, []))
+            values_b = np.array(getattr(b_to_a, emotion, []))
+
+            if len(values_a) == 0 or len(values_b) == 0:
+                ax.text(
+                    0.5,
+                    0.5,
+                    "No data",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                )
+                ax.set_title(f"{emotion}", fontsize=11, fontweight="bold")
+                continue
+
+            # Calculate gap (A - B)
+            min_len = min(len(values_a), len(values_b))
+            gap = values_a[:min_len] - values_b[:min_len]
+            x = np.linspace(0, 1, min_len)
+
+            # Plot gap as bars
+            colors = [color_positive if g > 0 else color_negative for g in gap]
+            ax.bar(x, gap, width=1 / min_len, color=colors, alpha=0.7, edgecolor="none")
+
+            # Zero line
+            ax.axhline(y=0, color="black", linewidth=1.5, linestyle="-")
+
+            # Fill regions
+            ax.fill_between(x, gap, 0, where=(gap > 0), alpha=0.3, color=color_positive)
+            ax.fill_between(x, gap, 0, where=(gap < 0), alpha=0.3, color=color_negative)
+
+            # Formatting
+            ax.set_ylim(-4, 4)
+            ax.set_xlim(0, 1)
+            ax.set_xlabel("Narrative Progress", fontsize=9)
+            ax.set_title(
+                f"{emotion}\n({config['description']})",
+                fontsize=11,
+                fontweight="bold",
+            )
+            ax.set_ylabel("Gap (A→B - B→A)", fontsize=9)
+            ax.grid(True, alpha=0.3, axis="y")
+
+            # Add labels for interpretation
+            if main_pairing and len(main_pairing) >= 2:
+                ax.text(
+                    0.02,
+                    3.5,
+                    f"{main_pairing[0]} feels more",
+                    fontsize=7,
+                    color=color_positive,
+                    alpha=0.8,
+                )
+                ax.text(
+                    0.02,
+                    -3.5,
+                    f"{main_pairing[1]} feels more",
+                    fontsize=7,
+                    color=color_negative,
+                    alpha=0.8,
+                )
+
+        # Add legend
+        legend_elements = [
+            plt.Rectangle(
+                (0, 0),
+                1,
+                1,
+                fc=color_positive,
+                alpha=0.7,
+                label=f"{main_pairing[0]} feels more"
+                if main_pairing
+                else "A feels more",
+            ),
+            plt.Rectangle(
+                (0, 0),
+                1,
+                1,
+                fc=color_negative,
+                alpha=0.7,
+                label=f"{main_pairing[1]} feels more"
+                if main_pairing
+                else "B feels more",
+            ),
+        ]
+        fig.legend(handles=legend_elements, loc="upper right", fontsize=10)
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+        # Save the figure
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=self.dpi, bbox_inches="tight")
+        plt.close(fig)
+
     def plot_comparison(
         self,
         timeseries_a: dict[str, EmotionTimeSeries],
