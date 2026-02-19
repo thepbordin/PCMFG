@@ -21,6 +21,17 @@ llm:
   # Maximum tokens per LLM call
   max_tokens: 4096
 
+  # Custom base URL for API (optional)
+  # Use this for:
+  # - API proxies (e.g., OpenRouter, Azure OpenAI)
+  # - Self-hosted models with OpenAI-compatible API
+  # - Local LLM servers (e.g., vLLM, Ollama with OpenAI compatibility)
+  # Examples:
+  #   base_url: "https://openrouter.ai/api/v1"
+  #   base_url: "https://your-resource.openai.azure.com"
+  #   base_url: "http://localhost:8000/v1"
+  base_url: "https://api.z.ai/api/coding/paas/v4"
+
 # =============================================================================
 # Text Processing Settings
 # =============================================================================

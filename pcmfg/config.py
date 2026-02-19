@@ -21,6 +21,10 @@ class LLMConfig(BaseModel):
     model: str = "gpt-4o"
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, ge=100)
+    base_url: str | None = Field(
+        default=None,
+        description="Custom base URL for API (e.g., for proxies or self-hosted)",
+    )
 
 
 class ProcessingConfig(BaseModel):
@@ -28,7 +32,9 @@ class ProcessingConfig(BaseModel):
 
     beat_detection: Literal["automatic", "length", "chapter"] = "automatic"
     beat_length: int = Field(default=500, ge=100, description="Target words per beat")
-    min_beat_length: int = Field(default=200, ge=50, description="Minimum words per beat")
+    min_beat_length: int = Field(
+        default=200, ge=50, description="Minimum words per beat"
+    )
     max_chunk_tokens: int = Field(
         default=3000, ge=500, description="Maximum tokens per LLM chunk"
     )
@@ -97,7 +103,9 @@ def _load_config_from_file(path: Path) -> Config:
     return Config(**data)
 
 
-def merge_cli_overrides(config: Config, **overrides: str | int | float | bool | None) -> Config:
+def merge_cli_overrides(
+    config: Config, **overrides: str | int | float | bool | None
+) -> Config:
     """Merge CLI argument overrides into configuration.
 
     Args:

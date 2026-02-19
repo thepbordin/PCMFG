@@ -59,31 +59,36 @@ def cli(ctx: click.Context, debug: bool) -> None:
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option(
-    "-o", "--output",
+    "-o",
+    "--output",
     type=click.Path(),
     default="./output",
     help="Output directory for results",
 )
 @click.option(
-    "-c", "--config",
+    "-c",
+    "--config",
     type=click.Path(exists=True),
     default=None,
     help="Path to config file",
 )
 @click.option(
-    "-p", "--provider",
+    "-p",
+    "--provider",
     type=click.Choice(["openai", "anthropic"]),
     default=None,
     help="LLM provider to use",
 )
 @click.option(
-    "-m", "--model",
+    "-m",
+    "--model",
     type=str,
     default=None,
     help="Model name to use",
 )
 @click.option(
-    "-f", "--format",
+    "-f",
+    "--format",
     type=click.Choice(["json", "csv", "both"]),
     default="json",
     help="Output format for data",
@@ -137,9 +142,7 @@ def analyze(
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            progress.add_task(
-                "Running PCMFG analysis...", total=None
-            )
+            progress.add_task("Running PCMFG analysis...", total=None)
 
             # Create analyzer
             analyzer = PCMFGAnalyzer(config=cfg)
@@ -322,6 +325,189 @@ def version() -> None:
     console.print(f"PCMFG version {__version__}")
     console.print("Please Care My Feeling Graph")
     console.print("A computational romance narrative mining system")
+
+
+@cli.command()
+@click.argument("novel_dir", type=click.Path(exists=True))
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(),
+    default=None,
+    help="Output file path for merged novel text",
+)
+@click.option(
+    "--info",
+    is_flag=True,
+    help="Show novel information without loading",
+)
+def load(novel_dir: str, output: str | None, info: bool) -> None:
+    """Load a novel from a directory structure.
+
+    NOVEL_DIR: Path to the novel directory containing collection folders.
+    """
+    from pcmfg.utils.novel_loader import NovelLoader, get_novel_info
+
+    novel_path = Path(novel_dir)
+
+    if info:
+        # Show novel info
+        novel_info = get_novel_info(novel_path)
+        table = Table(title="Novel Information")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Path", novel_info["path"])
+        table.add_row("Collections", ", ".join(novel_info["collections"]))
+        table.add_row("Total Files", str(novel_info["total_files"]))
+        if novel_info["chapter_range"]["start"]:
+            table.add_row(
+                "Chapter Range",
+                f"{novel_info['chapter_range']['start']} - {novel_info['chapter_range']['end']}",
+            )
+        table.add_row(
+            "Has Side Stories", "Yes" if novel_info["has_side_stories"] else "No"
+        )
+
+        console.print(table)
+        return
+
+    # Load the novel
+    loader = NovelLoader(novel_path)
+
+    if output:
+        output_path = Path(output)
+    else:
+        # Default output location
+        output_path = Path("./output") / f"{novel_path.name}_merged.txt"
+
+    console.print(f"[bold blue]Loading novel from:[/] {novel_path}")
+
+    try:
+        merged_text = loader.load(output_path)
+        console.print(f"[bold green]Success![/] Merged novel saved to: {output_path}")
+        console.print(f"  [dim]Total characters:[/] {len(merged_text):,}")
+        console.print(f"  [dim]Total chapters:[/] {len(loader.load_chapters())}")
+    except Exception as e:
+        console.print(f"[bold red]Error loading novel:[/] {e}")
+        raise
+
+
+@cli.command()
+@click.argument("novel_dir", type=click.Path(exists=True))
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(),
+    default="./output",
+    help="Output directory for analysis results",
+)
+@click.option(
+    "-c",
+    "--config",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to config file",
+)
+@click.option(
+    "--start",
+    type=int,
+    default=None,
+    help="Start chapter number",
+)
+@click.option(
+    "--end",
+    type=int,
+    default=None,
+    help="End chapter number",
+)
+@click.option(
+    "--save-merged",
+    is_flag=True,
+    default=True,
+    help="Save merged novel text",
+)
+@click.pass_context
+def analyze_novel(
+    ctx: click.Context,
+    novel_dir: str,
+    output: str,
+    config: str | None,
+    start: int | None,
+    end: int | None,
+    save_merged: bool,
+) -> None:
+    """Load and analyze a novel from a directory structure.
+
+    NOVEL_DIR: Path to the novel directory containing collection folders.
+    """
+    from pcmfg.utils.novel_loader import NovelLoader
+
+    debug = ctx.obj.get("debug", False)
+    novel_path = Path(novel_dir)
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load configuration
+    cfg = load_config(config)
+
+    console.print(f"[bold blue]Loading novel:[/] {novel_path.name}")
+
+    try:
+        loader = NovelLoader(novel_path)
+        chapters = loader.load_chapters()
+
+        # Filter chapters by range
+        if start is not None:
+            chapters = [
+                c
+                for c in chapters
+                if c["chapter_num"] is not None and c["chapter_num"] >= start
+            ]
+        if end is not None:
+            chapters = [
+                c
+                for c in chapters
+                if c["chapter_num"] is not None and c["chapter_num"] <= end
+            ]
+
+        # Filter out side stories if needed (chapters >= 1000)
+        chapters = [
+            c for c in chapters if c["chapter_num"] is None or c["chapter_num"] < 1000
+        ]
+
+        console.print(f"  [dim]Chapters to analyze:[/] {len(chapters)}")
+
+        # Build merged text
+        merged_text = "\n\n".join(
+            f"Chapter {c['chapter_num']}\n\n{c['content']}" for c in chapters
+        )
+
+        # Save merged text if requested
+        if save_merged:
+            merged_path = output_dir / f"{novel_path.name}_merged.txt"
+            with open(merged_path, "w", encoding="utf-8") as f:
+                f.write(merged_text)
+            console.print(f"  [dim]Merged text:[/] {merged_path}")
+
+        # Run analysis
+        console.print(f"[bold blue]Analyzing novel...[/]")
+
+        analyzer = PCMFGAnalyzer(config=cfg)
+        result = analyzer.analyze(merged_text, source=novel_path.name)
+
+        # Display and export results
+        _display_summary(result)
+        _export_results(result, output_dir, "json", cfg, False)
+        _generate_stats_report(result, output_dir)
+
+        console.print(f"\n[bold green]Done![/] Results saved to: {output_dir}")
+
+    except Exception as e:
+        console.print(f"[bold red]Analysis failed:[/] {e}")
+        if debug:
+            console.print_exception()
+        raise
 
 
 def main() -> None:
