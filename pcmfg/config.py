@@ -30,18 +30,22 @@ class LLMConfig(BaseModel):
 class ProcessingConfig(BaseModel):
     """Text processing configuration."""
 
-    beat_detection: Literal["automatic", "length", "chapter"] = "automatic"
-    beat_length: int = Field(default=500, ge=100, description="Target words per beat")
+    beat_detection: Literal["automatic", "length", "chapter", "paragraph"] = "automatic"
+    beat_length: int = Field(default=500, ge=20, description="Target words per beat")
     min_beat_length: int = Field(
-        default=200, ge=50, description="Minimum words per beat"
+        default=200, ge=10, description="Minimum words per beat"
     )
     max_chunk_tokens: int = Field(
-        default=3000, ge=500, description="Maximum tokens per LLM chunk"
+        default=3000, ge=200, description="Maximum tokens per LLM chunk"
     )
     world_builder_sample_tokens: int = Field(
         default=8000,
-        ge=1000,
+        ge=500,
         description="Maximum tokens for world builder sample (strategic sampling from beginning, middle, end)",
+    )
+    world_builder_hint: str | None = Field(
+        default=None,
+        description="Custom hint/instruction for world builder (e.g., for non-romantic stories)",
     )
     max_concurrency: int = Field(
         default=5,

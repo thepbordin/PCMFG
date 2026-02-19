@@ -62,11 +62,14 @@ class WorldBuilder:
         """
         self.llm_client = llm_client
 
-    def build(self, text: str) -> WorldBuilderOutput:
+    def build(self, text: str, hint: str | None = None) -> WorldBuilderOutput:
         """Build world context from text.
 
         Args:
             text: Input text to analyze.
+            hint: Optional custom hint/instruction for non-romantic stories.
+                  E.g., "This is a fairy tale. Group the three pigs as 'Pigs' and
+                  identify 'Big Bad Wolf' as the antagonist. Focus on conflict, not romance."
 
         Returns:
             WorldBuilderOutput with extracted world information.
@@ -74,9 +77,16 @@ class WorldBuilder:
         Raises:
             WorldBuilderError: If extraction fails.
         """
-        user_prompt = (
-            f"Analyze the following text and extract the world information:\n\n{text}"
-        )
+        # Build user prompt, optionally with hint
+        if hint:
+            user_prompt = (
+                f"SPECIAL INSTRUCTIONS:\n{hint}\n\n"
+                f"Analyze the following text and extract the world information:\n\n{text}"
+            )
+        else:
+            user_prompt = (
+                f"Analyze the following text and extract the world information:\n\n{text}"
+            )
 
         try:
             response = self.llm_client.call_json(
