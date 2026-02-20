@@ -225,7 +225,19 @@ Results will be saved to the specified output directory:
 results/
 ├── emotional_trajectory.json    # Raw time-series data
 ├── emotional_trajectory.png     # Visualization
-└── analysis_report.md           # Human-readable summary
+├── emotional_directional_comparison.png
+├── emotional_gap_analysis.png
+└── clusters/                    # Clustering analysis (optional)
+    ├── scene_cluster_scatter_2d.png
+    ├── scene_cluster_timeline.png
+    ├── scene_cluster_comparison.png
+    └── scene_cluster_radar.png
+```
+
+To generate cluster analysis, run:
+
+```bash
+python run_clustering_example.py results/emotional_trajectory.json
 ```
 
 ## Usage Examples
@@ -467,6 +479,150 @@ def impute_missing_emotions(chunks: list) -> list:
         
         # Impute missing for main pairing
         # ...
+```
+
+## Clustering Analysis
+
+PCFMG includes a clustering module for discovering emotional patterns and scene archetypes in narrative data. This enables deeper insights into the emotional structure of stories.
+
+### Overview
+
+The clustering module (`pcmfg.analysis`) provides tools to:
+
+1. **Extract features** from emotional time-series data
+2. **Cluster scenes** by their emotional profile
+3. **Visualize** cluster assignments and emotional archetypes
+
+### Feature Extraction
+
+The `FeatureExtractor` transforms emotional time-series into feature vectors suitable for clustering:
+
+| Feature Type | Description | Dimensions |
+|--------------|-------------|------------|
+| `RAW` | Direct emotion scores per chunk | 18 (9 emotions × 2 directions) |
+| `DELTA` | Change between consecutive chunks | 18 |
+| `STATISTICAL` | Mean, std, min, max, range aggregations | 90 |
+| `COMBINED` | Raw + cumulative mean + trend | 54 |
+| `WINDOWED` | Rolling window statistics | 36 |
+
+### Clustering Algorithms
+
+The `SceneClusterer` supports multiple algorithms:
+
+| Algorithm | Best For | Parameters |
+|-----------|----------|------------|
+| **K-Means** | Spherical clusters, fast | `n_clusters`, `random_state` |
+| **DBSCAN** | Outlier detection, irregular shapes | `eps`, `min_samples` |
+| **Hierarchical** | Nested patterns, dendrograms | `n_clusters` |
+
+### Usage
+
+#### Command Line
+
+```bash
+# Run clustering on an analysis result (outputs to same directory)
+python run_clustering_example.py output/emotional_trajectory.json
+
+# Specify custom output directory
+python run_clustering_example.py output/emotional_trajectory.json custom_output/
+```
+
+#### Python API
+
+```python
+from pcmfg.analysis import (
+    FeatureExtractor,
+    FeatureType,
+    SceneClusterer,
+    save_cluster_plots,
+)
+from pcmfg.models.schemas import AnalysisResult
+
+# Load analysis result
+result = AnalysisResult.parse_file("output/emotional_trajectory.json")
+
+# Extract features
+extractor = FeatureExtractor(feature_type=FeatureType.RAW)
+features = extractor.extract(result)
+
+# Find optimal number of clusters
+clusterer = SceneClusterer(n_clusters=4)
+scores = clusterer.find_optimal_k(features, k_range=(2, 6))
+best_k = max(scores, key=scores.get)
+
+# Cluster with optimal k
+clusterer = SceneClusterer(n_clusters=best_k)
+cluster_result = clusterer.cluster(features, interpret=True)
+
+# Access results
+print(f"Clusters: {cluster_result.n_clusters}")
+print(f"Silhouette: {cluster_result.silhouette_score:.3f}")
+print(cluster_result.cluster_interpretations)
+
+# Save visualizations to the same output directory
+save_cluster_plots(features, cluster_result, output_dir="output/clusters")
+```
+
+### Output Structure
+
+Cluster visualizations are saved to a `clusters/` subdirectory within the analysis output:
+
+```
+output/
+├── emotional_trajectory.json       # Raw time-series data
+├── emotional_trajectory.png        # Emotion visualization
+├── emotional_directional_comparison.png
+├── emotional_gap_analysis.png
+└── clusters/                       # Clustering output
+    ├── scene_cluster_scatter_2d.png
+    ├── scene_cluster_timeline.png
+    ├── scene_cluster_comparison.png
+    └── scene_cluster_radar.png
+```
+
+### Visualization Types
+
+| Plot | Description |
+|------|-------------|
+| **Scatter 2D** | PCA projection of scenes, colored by cluster |
+| **Timeline** | Cluster assignments over narrative progression |
+| **Comparison** | Bar chart comparing emotions across clusters |
+| **Radar** | Spider/radar charts showing cluster emotion profiles |
+
+### Cluster Interpretation
+
+The clusterer automatically generates human-readable interpretations based on dominant emotions:
+
+```
+Cluster 0: A_to_B: Trust(3.1), Arousal(3.1), Joy(3.0) | B_to_A: ...
+Cluster 1: A_to_B: baseline/neutral | B_to_A: baseline/neutral
+Cluster 2: A_to_B: Anger(4.0), Fear(3.0) | B_to_A: ...
+```
+
+### Silhouette Score
+
+The silhouette score measures clustering quality (-1 to 1):
+
+| Score | Quality |
+|-------|---------|
+| 0.7+ | Excellent |
+| 0.5-0.7 | Good |
+| 0.25-0.5 | Fair |
+| <0.25 | Poor |
+
+The `find_optimal_k()` method uses silhouette analysis to suggest the best number of clusters.
+
+### Cross-Novel Comparison
+
+Use `TrajectoryClusterer` to compare emotional trajectories across multiple novels:
+
+```python
+from pcmfg.analysis import TrajectoryClusterer
+
+# Cluster multiple novels by their overall emotional profile
+clusterer = TrajectoryClusterer(n_clusters=3)
+results = [load_result(f) for f in novel_files]
+trajectory_result = clusterer.cluster_multiple(results)
 ```
 
 ## Contributing
