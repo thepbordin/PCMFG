@@ -7,6 +7,7 @@ Main components:
 - FeatureExtractor: Transform emotional time-series into feature vectors
 - SceneClusterer: Cluster scenes/chunks by emotional profile
 - TrajectoryClusterer: Cluster emotional trajectory patterns
+- NarrativeNormalizer: Resample emotion time-series to uniform grid for cross-narrative comparison
 - Visualization: Cluster plotting functions
 """
 
@@ -17,6 +18,7 @@ from pcmfg.analysis.feature_extractor import (
     FeatureType,
     SceneFeatures,
 )
+from pcmfg.analysis.normalizer import NarrativeNormalizer
 from pcmfg.analysis.plotter import (
     plot_cluster_comparison,
     plot_cluster_emotions_radar,
@@ -24,6 +26,7 @@ from pcmfg.analysis.plotter import (
     plot_clusters_timeline,
     save_cluster_plots,
 )
+from pcmfg.models.schemas import NormalizedTrajectory
 
 __all__ = [
     # Feature extraction
@@ -35,6 +38,9 @@ __all__ = [
     "SceneClusterer",
     "TrajectoryClusterer",
     "ClusterResult",
+    # Normalization
+    "NarrativeNormalizer",
+    "NormalizedTrajectory",
     # Visualization
     "plot_clusters_2d",
     "plot_clusters_timeline",

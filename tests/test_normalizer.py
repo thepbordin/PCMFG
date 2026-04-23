@@ -131,7 +131,7 @@ class TestNorm03VariableLength:
             metadata=AnalysisMetadata(source="test.txt", total_chunks=3),
             world_builder=WorldBuilderOutput(main_pairing=["A", "B"]),
             chunks=[
-                ChunkAnalysis(chunk_id=i, position=i / 2.0)
+                ChunkAnalysis(chunk_id=i, position=i / 2.0, chunk_main_pov="A")
                 for i in range(3)
             ],
             timeseries={
