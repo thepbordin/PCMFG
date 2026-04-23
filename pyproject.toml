@@ -17,6 +17,7 @@ dependencies = [
     "rich>=13.0.0",
     "pyyaml>=6.0",
     "scikit-learn>=1.3.0",
+    "tslearn>=0.8.1",
 ]
 
 [project.optional-dependencies]
