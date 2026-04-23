@@ -203,5 +203,151 @@ class DTWClusterer:
     def cluster(
         self, trajectories: list[NormalizedTrajectory]
     ) -> DTWClusterResult:
-        """Cluster narratives by emotional arc shape. [Plan 02]"""
-        raise NotImplementedError("DTWClusterer.cluster() not yet implemented")
+        """Cluster narratives by emotional arc shape using DTW distance.
+
+        Args:
+            trajectories: Flat list of NormalizedTrajectory objects from
+                NarrativeNormalizer.normalize_all().
+
+        Returns:
+            DTWClusterResult with cluster assignments, barycenters,
+            distance matrix, and quality metrics.
+
+        Raises:
+            ValueError: If fewer narratives than n_clusters.
+        """
+        from scipy.spatial.distance import cdist as scipy_cdist
+        from sklearn.metrics import silhouette_score as sklearn_silhouette_score
+
+        # Build tslearn-compatible dataset
+        dataset, sources, n_points = build_dtw_dataset(trajectories)
+        n_narratives = len(sources)
+
+        # Validate input count
+        if n_narratives < self.n_clusters:
+            raise ValueError(
+                f"Need at least {self.n_clusters} narratives for "
+                f"n_clusters={self.n_clusters}, got {n_narratives}"
+            )
+
+        # --- Compute distance matrix ---
+        if self.metric == "dtw":
+            radius: int | None = None
+            if self.sakoe_chiba_radius is not None:
+                radius = int(self.sakoe_chiba_radius * n_points)
+
+            if radius is not None and radius > 0:
+                distance_matrix = cdist_dtw(
+                    dataset,
+                    global_constraint="sakoe_chiba",
+                    sakoe_chiba_radius=radius,
+                )
+            else:
+                distance_matrix = cdist_dtw(dataset)
+
+        elif self.metric == "euclidean":
+            dataset_flat = dataset.reshape(n_narratives, -1)
+            distance_matrix = scipy_cdist(dataset_flat, dataset_flat)
+
+        elif self.metric == "soft-dtw":
+            radius_soft: int | None = None
+            if self.sakoe_chiba_radius is not None:
+                radius_soft = int(self.sakoe_chiba_radius * n_points)
+
+            if radius_soft is not None and radius_soft > 0:
+                distance_matrix = cdist_dtw(
+                    dataset,
+                    global_constraint="sakoe_chiba",
+                    sakoe_chiba_radius=radius_soft,
+                )
+            else:
+                distance_matrix = cdist_dtw(dataset)
+
+        else:
+            raise ValueError(
+                f"Unknown metric: {self.metric}. "
+                f"Use 'euclidean', 'dtw', or 'soft-dtw'."
+            )
+
+        # --- Build metric_params for TimeSeriesKMeans ---
+        tslearn_metric: str = self.metric
+        metric_params: dict[str, object] | None = None
+
+        if self.metric == "soft-dtw":
+            tslearn_metric = "softdtw"  # CRITICAL: tslearn uses "softdtw"
+            metric_params = {"gamma": self.soft_dtw_gamma}
+        elif self.metric == "dtw":
+            radius_km: int | None = None
+            if self.sakoe_chiba_radius is not None:
+                radius_km = int(self.sakoe_chiba_radius * n_points)
+            if radius_km is not None and radius_km > 0:
+                metric_params = {
+                    "global_constraint": "sakoe_chiba",
+                    "sakoe_chiba_radius": radius_km,
+                }
+
+        # --- Fit TimeSeriesKMeans ---
+        km = TimeSeriesKMeans(
+            n_clusters=self.n_clusters,
+            metric=tslearn_metric,
+            metric_params=metric_params,
+            random_state=self.random_state,
+            max_iter=self.max_iter,
+            n_init=self.n_init,
+            max_iter_barycenter=self.max_iter_barycenter,
+        )
+        km.fit(dataset)
+
+        labels = km.labels_
+        centers = km.cluster_centers_
+
+        # --- Build cluster assignments (source → label) ---
+        assignments: dict[str, int] = {
+            source: int(label) for source, label in zip(sources, labels)
+        }
+
+        # --- Build cluster sizes ---
+        cluster_sizes: dict[str, int] = {}
+        for label in sorted(set(labels.tolist())):
+            cluster_sizes[f"Cluster {label}"] = int(np.sum(labels == label))
+
+        # --- Compute silhouette score (safe) ---
+        unique_labels = set(labels.tolist())
+        sil_score: float | None = None
+        if len(unique_labels) >= 2 and len(labels) > len(unique_labels):
+            try:
+                if self.metric in ("dtw", "soft-dtw"):
+                    sil_score = float(
+                        sklearn_silhouette_score(
+                            distance_matrix,
+                            labels,
+                            metric="precomputed",
+                        )
+                    )
+                else:
+                    X_flat = dataset.reshape(len(labels), -1)
+                    sil_score = float(sklearn_silhouette_score(X_flat, labels))
+            except Exception:
+                sil_score = None
+
+        # --- Extract barycenters ---
+        barycenters: list[NDArray[np.float64]] = []
+        for i in range(len(unique_labels)):
+            barycenters.append(centers[i])
+
+        # --- Determine stored radius ---
+        stored_radius: int | None = None
+        if self.sakoe_chiba_radius is not None:
+            stored_radius = int(self.sakoe_chiba_radius * n_points)
+
+        return DTWClusterResult(
+            assignments=assignments,
+            barycenters=barycenters,
+            distance_matrix=distance_matrix,
+            n_clusters=len(unique_labels),
+            metric=self.metric,
+            sakoe_chiba_radius=stored_radius,
+            cluster_sizes=cluster_sizes,
+            silhouette_score=sil_score,
+            sources=sources,
+        )
