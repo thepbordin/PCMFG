@@ -256,3 +256,30 @@ class AnalysisResult(BaseModel):
     )
     # Deprecated: kept for backward compatibility
     axes: AxesTimeSeries = Field(default_factory=AxesTimeSeries)
+
+
+# =============================================================================
+# Normalized Trajectory (Post-Pipeline Processing)
+# =============================================================================
+
+
+class NormalizedTrajectory(BaseModel):
+    """A single emotion trajectory resampled to a uniform grid.
+
+    Represents one emotion's trajectory for one direction (e.g., A→B Joy)
+    resampled to a uniform [0.0, 1.0] grid with N points. Used for
+    cross-narrative comparison regardless of source length.
+    """
+
+    source: str = Field(description="Source narrative identifier")
+    main_pairing: list[str] = Field(
+        description="Character names [Character A, Character B]"
+    )
+    direction: str = Field(description="'A_to_B' or 'B_to_A'")
+    emotion: str = Field(description="Emotion name from BASE_EMOTIONS")
+    x: list[float] = Field(description="Uniform grid points on [0.0, 1.0]")
+    y: list[float] = Field(description="Resampled emotion values (integers 1-5)")
+    original_length: int = Field(description="Original number of data points")
+    n_points: int = Field(description="Normalized grid size")
+
+    model_config = ConfigDict(frozen=True)
