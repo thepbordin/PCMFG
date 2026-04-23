@@ -29,6 +29,7 @@ from pcmfg.phase3.synthesizer import Synthesizer
 from pcmfg.utils.text_processing import (
     chunk_text_by_chapter,
     chunk_text_by_length,
+    chunk_text_by_n_paragraphs,
     chunk_text_by_paragraph,
     clean_text,
     estimate_tokens,
@@ -461,9 +462,9 @@ class PCMFGAnalyzer:
     def _extract_emotions(self, text: str) -> list[ChunkAnalysis]:
         """Extract emotions from all text chunks.
 
-        Uses parallel processing with configurable concurrency.
-        Also implements token efficiency optimization by skipping chunks
-        that don't contain any character names from the aliases list.
+        Uses parallel processing with configurable concurrency when emotion_carryover
+        is disabled. When carry-over is enabled, processes chunks sequentially so each
+        chunk receives the previous chunk's emotion state as context.
 
         Args:
             text: Full input text.
@@ -471,41 +472,36 @@ class PCMFGAnalyzer:
         Returns:
             List of ChunkAnalysis objects.
         """
+        if self.config.processing.emotion_carryover:
+            return self._extract_emotions_sequential(text)
+
         from pcmfg.utils.parallel import ParallelProcessor
 
-        # Chunk text based on config
         chunks_text = self._chunk_text(text)
         total_chunks = len(chunks_text)
 
-        # emotion_extractor is guaranteed to be set after _run_world_builder
         assert self.emotion_extractor is not None
-        extractor = self.emotion_extractor  # Local reference for type safety
+        extractor = self.emotion_extractor
         world = extractor.world
 
-        # Track skipped chunks for logging
         skipped_count = 0
 
-        # Create processor function with chunk filtering
         def process_chunk(args: tuple[str, int, float]) -> ChunkAnalysis | None:
             nonlocal skipped_count
             chunk_text, chunk_id, position = args
 
-            # Token efficiency: skip chunks with no relevant characters
             if not should_process_chunk(chunk_text, world.aliases):
                 logger.debug(f"Skipping chunk {chunk_id}: no character names found")
                 skipped_count += 1
-                # Return None for skipped chunks - we'll create default chunks later
                 return None
 
             return extractor.extract(chunk_text, chunk_id, position)
 
-        # Prepare chunk data
         chunk_items = [
             (chunk_text, i, i / total_chunks if total_chunks > 0 else 0.0)
             for i, chunk_text in enumerate(chunks_text)
         ]
 
-        # Progress tracking
         completed_count = 0
 
         def on_progress(completed: int, total: int) -> None:
@@ -517,7 +513,6 @@ class PCMFGAnalyzer:
         def on_error(index: int, error: Exception) -> None:
             logger.error(f"Failed to process chunk {index}: {error}")
 
-        # Process in parallel
         processor = ParallelProcessor(
             process_fn=process_chunk,
             max_concurrency=self.config.processing.max_concurrency,
@@ -530,13 +525,11 @@ class PCMFGAnalyzer:
         if skipped_count > 0:
             logger.info(f"Skipped {skipped_count} chunks (no character names)")
 
-        # Extract successful results, create defaults for failures/skipped
         chunk_analyses: list[ChunkAnalysis] = []
         for result in results:
             if result.success and result.result is not None:
                 chunk_analyses.append(result.result)
             else:
-                # Create default chunk for failed/skipped extraction
                 position = result.index / total_chunks if total_chunks > 0 else 0.0
                 error_msg = (
                     str(result.error)
@@ -549,6 +542,54 @@ class PCMFGAnalyzer:
                     error_msg,
                 )
                 chunk_analyses.append(default_chunk)
+
+        return chunk_analyses
+
+    def _extract_emotions_sequential(self, text: str) -> list[ChunkAnalysis]:
+        """Extract emotions sequentially with carry-over context.
+
+        Each chunk receives the previous chunk's emotion state in its prompt,
+        enabling emotional continuity across the narrative.
+
+        Args:
+            text: Full input text.
+
+        Returns:
+            List of ChunkAnalysis objects.
+        """
+        chunks_text = self._chunk_text(text)
+        total_chunks = len(chunks_text)
+
+        assert self.emotion_extractor is not None
+        extractor = self.emotion_extractor
+        world = extractor.world
+
+        chunk_analyses: list[ChunkAnalysis] = []
+        previous_chunk: ChunkAnalysis | None = None
+        skipped_count = 0
+
+        for i, chunk_text in enumerate(chunks_text):
+            position = i / total_chunks if total_chunks > 0 else 0.0
+
+            if not should_process_chunk(chunk_text, world.aliases):
+                logger.debug(f"Skipping chunk {i}: no character names found")
+                skipped_count += 1
+                default_chunk = extractor._create_default_chunk(
+                    i, position, "Skipped (no character names)"
+                )
+                chunk_analyses.append(default_chunk)
+                previous_chunk = default_chunk
+                continue
+
+            logger.info(f"Processing chunk {i + 1}/{total_chunks}")
+            chunk = extractor.extract(
+                chunk_text, i, position, previous_chunk=previous_chunk
+            )
+            chunk_analyses.append(chunk)
+            previous_chunk = chunk
+
+        if skipped_count > 0:
+            logger.info(f"Skipped {skipped_count} chunks (no character names)")
 
         return chunk_analyses
 
@@ -572,6 +613,12 @@ class PCMFGAnalyzer:
                 max_tokens=max_tokens,
                 min_chunk_tokens=self.config.processing.min_beat_length,
             )
+        elif beat_detection == "paragraphs":
+            return chunk_text_by_n_paragraphs(
+                text,
+                paragraphs_per_chunk=self.config.processing.paragraphs_per_chunk,
+                max_tokens=max_tokens,
+            )
         elif beat_detection == "length":
             return chunk_text_by_length(
                 text,
@@ -579,10 +626,8 @@ class PCMFGAnalyzer:
                 min_chunk_tokens=self.config.processing.min_beat_length,
             )
         else:  # automatic
-            # Try chapter-based first, fall back to length-based
             chunks = chunk_text_by_chapter(text, max_tokens)
             if len(chunks) <= 1:
-                # No chapters found, use length-based
                 chunks = chunk_text_by_length(
                     text,
                     max_tokens=max_tokens,

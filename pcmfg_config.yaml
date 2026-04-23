@@ -40,17 +40,22 @@ processing:
   #   - "automatic": Try chapter-based first, fall back to length-based
   #   - "length": Split by word count using beat_length
   #   - "chapter": Split by chapter markers (e.g., "Chapter 1", "Chapter 2")
-  beat_detection: "chapter"
-
-  # Target words per beat (used when beat_detection = "length")
-  beat_length: 500
+  #   - "paragraph": One paragraph per chunk
+  #   - "paragraphs": Group N paragraphs per chunk (see paragraphs_per_chunk)
+  beat_detection: "length"
+  paragraphs_per_chunk: 3
+  beat_length: 300
 
   # Minimum words per beat (prevents over-fragmentation)
-  min_beat_length: 200
+  min_beat_length: 100
 
   # Maximum tokens per chunk sent to LLM for emotion extraction
-  # Adjust based on your model's context window
-  max_chunk_tokens: 3000
+  # Lower = more chunks, higher = fewer chunks
+  max_chunk_tokens: 1500
+
+  # Emotion carry-over: include previous chunk's emotion state as context
+  # When enabled, chunks are processed sequentially (not in parallel)
+  emotion_carryover: true
 
   # Maximum tokens for world builder sample (strategic sampling)
   # For long texts, samples from beginning, middle, and end sections
@@ -58,6 +63,7 @@ processing:
   world_builder_sample_tokens: 8000
 
   # Maximum concurrent API calls for parallel chunk processing
+  # (ignored when emotion_carryover is enabled)
   max_concurrency: 5
 
 # =============================================================================

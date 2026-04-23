@@ -193,16 +193,16 @@ class NarrativeOverlayPlotter:
 
         legend_handles = []
         for cluster_label, size in sorted(
-            cluster_result.cluster_sizes.items(), key=lambda x: int(x[0])
+            cluster_result.cluster_sizes.items(), key=lambda x: int(x[0].replace("Cluster ", ""))
         ):
-            label_idx = int(cluster_label)
+            label_idx = int(cluster_label.replace("Cluster ", ""))
             color = CLUSTER_COLORS[label_idx % len(CLUSTER_COLORS)]
             handle = Line2D(
                 [0],
                 [0],
                 color=color,
                 linewidth=2,
-                label=f"Cluster {cluster_label} ({size} narratives)",
+                label=f"{cluster_label} ({size} narratives)",
             )
             legend_handles.append(handle)
 

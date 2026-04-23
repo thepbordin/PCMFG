@@ -227,7 +227,8 @@ class EmotionExtractor:
         self._system_prompt = build_emotion_extractor_system_prompt(world)
 
     def extract(
-        self, text_chunk: str, chunk_id: int, position: float = 0.0
+        self, text_chunk: str, chunk_id: int, position: float = 0.0,
+        previous_chunk: ChunkAnalysis | None = None,
     ) -> ChunkAnalysis:
         """Extract directed emotions from a text chunk.
 
@@ -235,14 +236,16 @@ class EmotionExtractor:
             text_chunk: Text to analyze.
             chunk_id: Sequential chunk identifier.
             position: Position in narrative (0.0-1.0).
+            previous_chunk: Previous chunk's analysis (for emotion carry-over context).
 
         Returns:
             ChunkAnalysis with extracted emotions.
-
-        Raises:
-            EmotionExtractionError: If extraction fails.
         """
         user_prompt = f"Analyze the following text chunk:\n\n{text_chunk}"
+
+        if previous_chunk is not None:
+            carryover_block = self._build_carryover_context(previous_chunk)
+            user_prompt = f"{carryover_block}\n\n{user_prompt}"
 
         try:
             response = self.llm_client.call_json(
@@ -250,12 +253,49 @@ class EmotionExtractor:
                 user_prompt=user_prompt,
             )
 
-            # Parse and validate the response
             return self._parse_response(response, chunk_id, position)
 
         except (LLMAPIError, LLMResponseParseError) as e:
-            # Return default chunk on failure
             return self._create_default_chunk(chunk_id, position, str(e))
+
+    def _build_carryover_context(self, previous_chunk: ChunkAnalysis) -> str:
+        """Build a context block from the previous chunk's emotion state.
+
+        Args:
+            previous_chunk: The immediately preceding ChunkAnalysis.
+
+        Returns:
+            Formatted string describing previous emotion state.
+        """
+        lines = [
+            "### PREVIOUS CHUNK EMOTION STATE",
+            f"* Chunk {previous_chunk.chunk_id} (position {previous_chunk.position:.2f})",
+            f"* POV: {previous_chunk.chunk_main_pov}",
+            f"* Scene: {previous_chunk.scene_summary}",
+            "",
+        ]
+
+        if previous_chunk.directed_emotions:
+            lines.append("* Previous directed emotion scores:")
+            for de in previous_chunk.directed_emotions:
+                scores_dict = de.scores.model_dump()
+                active = ", ".join(
+                    f"{e}={scores_dict[e]}" for e in BASE_EMOTIONS if scores_dict[e] > 1
+                )
+                lines.append(
+                    f"  - {de.source} -> {de.target}: {active or 'all baseline (1)'}"
+                )
+
+        lines.append("")
+        lines.append(
+            "Use the previous chunk's emotional state as context. "
+            "Emotions are generally continuous — if the previous chunk scored high on "
+            "an emotion, that emotion likely persists unless the current text explicitly shows a change. "
+            "Do NOT simply copy previous scores; score based on the current text, "
+            "but let the previous state inform your baseline expectation."
+        )
+
+        return "\n".join(lines)
 
     def _parse_response(
         self, response: dict, chunk_id: int, position: float

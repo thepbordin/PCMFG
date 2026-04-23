@@ -321,6 +321,48 @@ def chunk_text_by_scenes(
     return chunks
 
 
+def chunk_text_by_n_paragraphs(
+    text: str,
+    paragraphs_per_chunk: int = 3,
+    max_tokens: int = 3000,
+) -> list[str]:
+    """Split text into chunks by grouping N paragraphs together.
+
+    Each chunk contains exactly N paragraphs (or fewer for the last chunk).
+    If a grouped chunk exceeds max_tokens, it is further split by sentences.
+
+    Args:
+        text: Input text string.
+        paragraphs_per_chunk: Number of paragraphs to group per chunk.
+        max_tokens: Maximum tokens per chunk (enforced as a hard cap).
+
+    Returns:
+        List of text chunks, each containing N paragraphs (approximately).
+    """
+    if not text:
+        return []
+
+    text = clean_text(text)
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+    if not paragraphs:
+        return [text.strip()] if text.strip() else []
+
+    chunks: list[str] = []
+
+    for i in range(0, len(paragraphs), paragraphs_per_chunk):
+        group = paragraphs[i : i + paragraphs_per_chunk]
+        combined = "\n\n".join(group)
+
+        if estimate_tokens(combined) <= max_tokens:
+            chunks.append(combined)
+        else:
+            sub_chunks = chunk_text_by_length(combined, max_tokens)
+            chunks.extend(sub_chunks)
+
+    return chunks
+
+
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences.
 

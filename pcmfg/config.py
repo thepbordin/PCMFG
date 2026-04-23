@@ -30,13 +30,28 @@ class LLMConfig(BaseModel):
 class ProcessingConfig(BaseModel):
     """Text processing configuration."""
 
-    beat_detection: Literal["automatic", "length", "chapter", "paragraph"] = "automatic"
+    beat_detection: Literal[
+        "automatic", "length", "chapter", "paragraph", "paragraphs"
+    ] = "automatic"
     beat_length: int = Field(default=500, ge=20, description="Target words per beat")
     min_beat_length: int = Field(
         default=200, ge=10, description="Minimum words per beat"
     )
+    paragraphs_per_chunk: int = Field(
+        default=3,
+        ge=2,
+        le=10,
+        description="Number of paragraphs per chunk ('paragraphs' mode)",
+    )
     max_chunk_tokens: int = Field(
         default=3000, ge=200, description="Maximum tokens per LLM chunk"
+    )
+    emotion_carryover: bool = Field(
+        default=True,
+        description=(
+            "Include previous chunk's emotion state as context "
+            "for current chunk scoring"
+        ),
     )
     world_builder_sample_tokens: int = Field(
         default=8000,
