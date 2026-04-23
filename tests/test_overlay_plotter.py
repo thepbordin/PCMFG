@@ -230,3 +230,157 @@ class TestVIS03:
 
         assert output.exists()
         assert output.stat().st_size > 0
+
+
+class TestVIS04ClusterAndPlotAll:
+    """VIS-04: Cluster-specific visualization and plot_all suite generation."""
+
+    def test_cluster_plot_creates_file(
+        self,
+        sample_normalized_trajectories_multi: list,
+        sample_dtw_cluster_result: object,
+        tmp_path: Path,
+    ) -> None:
+        """plot_cluster(cluster_id=0) creates a PNG file for the specified cluster."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_cluster_0.png"
+        plotter.plot_cluster(
+            sample_normalized_trajectories_multi,
+            sample_dtw_cluster_result,
+            cluster_id=0,
+            output_path=output,
+        )
+
+        assert output.exists(), "Cluster 0 plot should be created"
+        assert output.stat().st_size > 0, "Cluster 0 plot should not be empty"
+
+    def test_cluster_plot_shows_barycenter(
+        self,
+        sample_normalized_trajectories_multi: list,
+        sample_dtw_cluster_result: object,
+        tmp_path: Path,
+    ) -> None:
+        """plot_cluster exercises barycenter logic and creates file for both clusters."""
+        plotter = NarrativeOverlayPlotter()
+        for cid in [0, 1]:
+            output = tmp_path / f"overlay_cluster_{cid}.png"
+            plotter.plot_cluster(
+                sample_normalized_trajectories_multi,
+                sample_dtw_cluster_result,
+                cluster_id=cid,
+                output_path=output,
+            )
+            assert output.exists(), f"Cluster {cid} plot should exist"
+            assert output.stat().st_size > 0
+
+    def test_cluster_invalid_id_raises(
+        self,
+        sample_normalized_trajectories_multi: list,
+        sample_dtw_cluster_result: object,
+        tmp_path: Path,
+    ) -> None:
+        """plot_cluster(cluster_id=99) raises ValueError for out-of-range id."""
+        import numpy as np
+
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_cluster_99.png"
+
+        with pytest.raises(ValueError, match="cluster_id 99 out of range"):
+            plotter.plot_cluster(
+                sample_normalized_trajectories_multi,
+                sample_dtw_cluster_result,
+                cluster_id=99,
+                output_path=output,
+            )
+
+    def test_cluster_zero_members_raises(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_cluster raises ValueError when cluster has 0 members."""
+        import numpy as np
+
+        from pcmfg.analysis.dtw_clusterer import DTWClusterResult
+
+        # Create cluster result with one cluster that has NO matching sources
+        bary = np.zeros((100, 18), dtype=np.float64)
+        empty_result = DTWClusterResult(
+            assignments={},
+            barycenters=[bary],
+            distance_matrix=np.zeros((1, 1)),
+            n_clusters=1,
+            metric="dtw",
+            sakoe_chiba_radius=2,
+            cluster_sizes={"0": 0},
+            silhouette_score=0.0,
+            sources=[],
+        )
+
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_cluster_empty.png"
+
+        with pytest.raises(ValueError, match="has no members"):
+            plotter.plot_cluster(
+                sample_normalized_trajectories_multi,
+                empty_result,
+                cluster_id=0,
+                output_path=output,
+            )
+
+    def test_plot_all_generates_suite(
+        self,
+        sample_normalized_trajectories_multi: list,
+        sample_dtw_cluster_result: object,
+        tmp_path: Path,
+    ) -> None:
+        """plot_all() with cluster_result returns list of Paths, all files exist."""
+        plotter = NarrativeOverlayPlotter()
+        generated = plotter.plot_all(
+            sample_normalized_trajectories_multi,
+            tmp_path,
+            cluster_result=sample_dtw_cluster_result,
+        )
+
+        assert isinstance(generated, list)
+        assert len(generated) == 14, (
+            f"Expected 14 files (grid+9emotions+2directions+2clusters), got {len(generated)}"
+        )
+        for path in generated:
+            assert path.exists(), f"Expected file {path} to exist"
+
+    def test_plot_all_without_cluster(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_all() without cluster_result generates 12 files (no cluster PNGs)."""
+        plotter = NarrativeOverlayPlotter()
+        generated = plotter.plot_all(
+            sample_normalized_trajectories_multi,
+            tmp_path,
+        )
+
+        assert isinstance(generated, list)
+        assert len(generated) == 12, (
+            f"Expected 12 files (grid+9emotions+2directions), got {len(generated)}"
+        )
+        for path in generated:
+            assert path.exists(), f"Expected file {path} to exist"
+
+    def test_plot_all_with_cluster_file_count(
+        self,
+        sample_normalized_trajectories_multi: list,
+        sample_dtw_cluster_result: object,
+        tmp_path: Path,
+    ) -> None:
+        """plot_all() with cluster_result generates 12 + N_cluster files."""
+        plotter = NarrativeOverlayPlotter()
+        generated = plotter.plot_all(
+            sample_normalized_trajectories_multi,
+            tmp_path,
+            cluster_result=sample_dtw_cluster_result,
+        )
+
+        # 2 clusters in sample_dtw_cluster_result
+        assert len(generated) == 14
