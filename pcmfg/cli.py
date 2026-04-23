@@ -20,7 +20,7 @@ from rich.table import Table
 from pcmfg import __version__
 from pcmfg.analyzer import PCMFGAnalyzer
 from pcmfg.config import Config, load_config, merge_cli_overrides
-from pcmfg.models.schemas import AnalysisResult
+from pcmfg.models.schemas import AnalysisResult, InterestingSectionReport
 from pcmfg.visualization.plotter import EmotionPlotter
 
 # Load environment variables from .env file
@@ -622,6 +622,180 @@ def analyze_novel(
         if debug:
             console.print_exception()
         raise
+
+
+@cli.command()
+@click.argument("input_file", type=click.Path(exists=True))
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(),
+    default="./output",
+    help="Output directory for results",
+)
+@click.option(
+    "--n-discords",
+    type=int,
+    default=5,
+    help="Number of top discords (emotional climaxes) to detect",
+)
+@click.option(
+    "--n-regimes",
+    type=int,
+    default=3,
+    help="Number of story act segments to detect",
+)
+@click.option(
+    "--n-motifs",
+    type=int,
+    default=3,
+    help="Number of top motif pairs (recurring tropes) to detect",
+)
+@click.option(
+    "--window-size",
+    type=int,
+    default=None,
+    help="Window size for Matrix Profile (auto if not set)",
+)
+@click.option(
+    "--all-gaps",
+    is_flag=True,
+    help="Compute gap analysis at every timestamp",
+)
+@click.option(
+    "--no-plot",
+    is_flag=True,
+    help="Skip generating visualization plot",
+)
+@click.pass_context
+def interesting(
+    ctx: click.Context,
+    input_file: str,
+    output: str,
+    n_discords: int,
+    n_regimes: int,
+    n_motifs: int,
+    window_size: int | None,
+    all_gaps: bool,
+    no_plot: bool,
+) -> None:
+    """Detect interesting narrative sections from a previous analysis.
+
+    INPUT_FILE: Path to a JSON file produced by 'pcmfg analyze'.
+    """
+    from pcmfg.interesting import InterestingSectionDetector
+    from pcmfg.interesting.plotter import plot_interesting_report
+    from pcmfg.models.schemas import InterestingSectionReport
+
+    debug = ctx.obj.get("debug", False)
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    input_path = Path(input_file)
+    console.print(f"[bold blue]Loading analysis:[/] {input_path.name}")
+
+    try:
+        with open(input_path, encoding="utf-8") as f:
+            data = json.load(f)
+        result = AnalysisResult.model_validate(data)
+    except Exception as e:
+        console.print(f"[bold red]Failed to load analysis file:[/] {e}")
+        sys.exit(1)
+
+    console.print(
+        f"  [dim]Chunks:[/] {result.metadata.total_chunks}  "
+        f"[dim]Pairing:[/] {' & '.join(result.world_builder.main_pairing[:2])}"
+    )
+
+    try:
+        detector = InterestingSectionDetector(
+            window_size=window_size,
+            n_discords=n_discords,
+            n_regimes=n_regimes,
+            n_motifs=n_motifs,
+            compute_all_gaps=all_gaps,
+        )
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Running interesting section detection...", total=None)
+            report = detector.detect(result)
+
+    except ImportError as e:
+        console.print(f"[bold red]Missing dependency:[/] {e}")
+        sys.exit(1)
+
+    # Display results
+    _display_interesting_report(report)
+
+    # Export JSON
+    report_path = output_dir / "interesting_sections.json"
+    report_data = report.model_dump(mode="json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report_data, f, indent=2, default=str)
+    console.print(f"\n  [dim]Report:[/] {report_path}")
+
+    # Plot
+    if not no_plot:
+        plot_path = output_dir / "interesting_sections.png"
+        source = result.metadata.source or "Unknown"
+        pairing = result.world_builder.main_pairing[:2]
+        plot_interesting_report(
+            report,
+            plot_path,
+            title=f"Interesting Sections: {source} ({pairing[0]} & {pairing[1]})",
+        )
+        console.print(f"  [dim]Plot:[/] {plot_path}")
+
+    console.print(f"\n[bold green]Done![/] Results saved to: {output_dir}")
+
+
+def _display_interesting_report(report: InterestingSectionReport) -> None:
+    """Display detection results in tables."""
+    # Discords
+    if report.discords:
+        table = Table(title="Emotional Climaxes (Discords)")
+        table.add_column("#", style="dim")
+        table.add_column("Position", style="cyan")
+        table.add_column("Chunk ID", style="yellow")
+        table.add_column("Distance", style="red")
+        for i, d in enumerate(report.discords):
+            table.add_row(
+                str(i + 1),
+                f"{d.position:.2f}",
+                str(d.chunk_id),
+                f"{d.distance:.3f}",
+            )
+        console.print(table)
+
+    # Segments
+    if report.segments:
+        table = Table(title="Story Act Boundaries")
+        table.add_column("Position", style="cyan")
+        table.add_column("Chunk ID", style="yellow")
+        table.add_column("Regime", style="green")
+        for s in report.segments:
+            table.add_row(f"{s.position:.2f}", str(s.chunk_id), s.regime_label)
+        console.print(table)
+
+    # Motifs
+    if report.motifs:
+        table = Table(title="Recurring Tropes (Motifs)")
+        table.add_column("#", style="dim")
+        table.add_column("Pos A", style="cyan")
+        table.add_column("Pos B", style="cyan")
+        table.add_column("Distance", style="green")
+        for i, m in enumerate(report.motifs):
+            table.add_row(
+                str(i + 1),
+                f"{m.position_a:.2f}",
+                f"{m.position_b:.2f}",
+                f"{m.distance:.3f}",
+            )
+        console.print(table)
 
 
 @cli.command()

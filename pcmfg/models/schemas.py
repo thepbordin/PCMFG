@@ -283,3 +283,102 @@ class NormalizedTrajectory(BaseModel):
     n_points: int = Field(description="Normalized grid size")
 
     model_config = ConfigDict(frozen=True)
+
+
+# =============================================================================
+# Interesting Section Detection Models (Post-Pipeline Analysis)
+# =============================================================================
+
+
+class DiscordResult(BaseModel):
+    """A detected discord — the most unique emotional moment in the narrative."""
+
+    index: int = Field(description="Index in the timeseries where discord starts")
+    position: float = Field(
+        ge=0.0, le=1.0, description="Narrative position (0.0-1.0)"
+    )
+    chunk_id: int = Field(description="Chunk ID at this position")
+    distance: float = Field(
+        ge=0.0, description="Matrix Profile distance to nearest neighbor"
+    )
+    window_size: int = Field(description="Window size used for detection")
+
+
+class SegmentationResult(BaseModel):
+    """A semantic segmentation change point (story act boundary)."""
+
+    index: int = Field(description="Index in the timeseries where change occurs")
+    position: float = Field(
+        ge=0.0, le=1.0, description="Narrative position (0.0-1.0)"
+    )
+    chunk_id: int = Field(description="Chunk ID at this boundary")
+    regime_label: str = Field(
+        description="Label like 'Intro', 'Conflict', 'Resolution'"
+    )
+
+
+class MotifPair(BaseModel):
+    """A pair of similar 18D sequences (recurring trope)."""
+
+    index_a: int = Field(description="Start index of first occurrence")
+    index_b: int = Field(description="Start index of second occurrence")
+    position_a: float = Field(
+        ge=0.0, le=1.0, description="Narrative position of first"
+    )
+    position_b: float = Field(
+        ge=0.0, le=1.0, description="Narrative position of second"
+    )
+    chunk_id_a: int = Field(description="Chunk ID of first occurrence")
+    chunk_id_b: int = Field(description="Chunk ID of second occurrence")
+    distance: float = Field(
+        ge=0.0, description="Pairwise distance between subsequences"
+    )
+
+
+class GapValue(BaseModel):
+    """Per-emotion gap at a single timestamp."""
+
+    emotion: str = Field(description="Emotion name from BASE_EMOTIONS")
+    a_to_b: float = Field(description="A->B value")
+    b_to_a: float = Field(description="B->A value")
+    gap: float = Field(description="A->B minus B->A")
+
+
+class GapAtTimestamp(BaseModel):
+    """All 9 emotion gaps at a specific timestamp."""
+
+    index: int = Field(description="Timeseries index")
+    position: float = Field(ge=0.0, le=1.0, description="Narrative position")
+    chunk_id: int = Field(description="Chunk ID")
+    gaps: list[GapValue] = Field(description="Per-emotion gap values")
+    dominant_gap_emotion: str = Field(
+        description="Emotion with largest absolute gap"
+    )
+    dominant_gap_value: float = Field(
+        description="Value of the largest absolute gap"
+    )
+
+
+class InterestingSectionReport(BaseModel):
+    """Complete report from Interesting Section Detection."""
+
+    source: str = Field(description="Source narrative identifier")
+    main_pairing: list[str] = Field(description="Character names")
+    window_size: int = Field(description="Window size used for MP computation")
+    n_chunks: int = Field(description="Number of chunks in the narrative")
+    discords: list[DiscordResult] = Field(
+        default_factory=list, description="Top-K detected discords"
+    )
+    segments: list[SegmentationResult] = Field(
+        default_factory=list, description="Semantic change points"
+    )
+    motifs: list[MotifPair] = Field(
+        default_factory=list, description="Top-K recurring motif pairs"
+    )
+    gaps: list[GapAtTimestamp] = Field(
+        default_factory=list, description="Gap analysis at interesting points"
+    )
+    matrix_profile_distances: list[float] = Field(
+        default_factory=list,
+        description="Full matrix profile distance array (for visualization)",
+    )

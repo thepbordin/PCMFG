@@ -79,3 +79,4 @@ dmypy.json
 docs/_build/
 
 novels/
+data/

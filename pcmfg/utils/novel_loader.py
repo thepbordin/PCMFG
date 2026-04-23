@@ -205,6 +205,10 @@ class NovelLoader:
     def load_chapters(self) -> list[dict]:
         """Load novel as list of chapter dictionaries.
 
+        Supports two directory layouts:
+        1. Nested: novel_dir/collection/*.txt
+        2. Flat: novel_dir/*.md or novel_dir/*.txt
+
         Returns:
             List of dicts with 'chapter_num', 'title', 'content' keys.
         """
@@ -212,8 +216,37 @@ class NovelLoader:
 
         all_chapters: list[tuple[int, dict]] = []
 
-        for collection_dir in collections:
-            chapter_files = sorted(collection_dir.glob("*.txt"))
+        if collections:
+            # Nested layout: collection folders with chapter files
+            for collection_dir in collections:
+                chapter_files = sorted(collection_dir.glob("*.txt"))
+
+                for chapter_file in chapter_files:
+                    title, chapter_num = _parse_chapter_filename(
+                        chapter_file.name, self.chapter_prefix
+                    )
+
+                    with open(chapter_file, encoding="utf-8") as f:
+                        content = f.read().strip()
+
+                    sort_key = chapter_num if chapter_num is not None else len(all_chapters)
+                    all_chapters.append(
+                        (
+                            sort_key,
+                            {
+                                "chapter_num": chapter_num,
+                                "title": title,
+                                "content": content,
+                                "source_file": str(chapter_file),
+                            },
+                        )
+                    )
+        else:
+            # Flat layout: .md or .txt files directly in the directory
+            chapter_files = sorted(
+                list(self.novel_dir.glob("*.md"))
+                + list(self.novel_dir.glob("*.txt"))
+            )
 
             for chapter_file in chapter_files:
                 title, chapter_num = _parse_chapter_filename(
