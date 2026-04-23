@@ -13,7 +13,7 @@ Extends the existing PCMFG pipeline with three new capabilities layered on top o
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Normalization Foundation** - Resample any-length emotion time-series to a uniform [0.0, 1.0] grid using nearest-neighbor interpolation
-- [ ] **Phase 2: DTW Distance & Shape Clustering** - Cluster narratives by emotional arc shape using DTW distance via tslearn
+- [x] **Phase 2: DTW Distance & Shape Clustering** - Cluster narratives by emotional arc shape using DTW distance via tslearn (completed 2026-04-23)
 - [ ] **Phase 3: Overlay Visualization** - Overlay multiple normalized emotional trajectories on the same axes with cluster coloring
 
 ## Phase Details
@@ -44,7 +44,7 @@ Plans:
   3. User can retrieve a DTW barycenter (prototypical emotional arc) for each cluster
   4. User can switch between Euclidean, DTW, and Soft-DTW distance metrics and configure Sakoe-Chiba warping radius via configuration
   5. Running the same clustering with the same inputs and configuration produces identical results (reproducible with random_state)
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — Data model contract (DTWClusterResult, DistanceMetric), trajectory stacking helper, and test scaffold
@@ -59,11 +59,11 @@ Plans:
   2. User can generate per-emotion overlay plots for any of the 9 base emotions
   3. User can generate separate A-to-B and B-to-A direction overlay plots for asymmetry analysis
   4. User can visualize cluster barycenters alongside their member trajectories on the same axes
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Core overlay plotter (plot_overlay, plot_emotion, plot_direction) with cluster coloring + test scaffold
+- [ ] 03-02-PLAN.md — Cluster features (plot_cluster, plot_all, barycenter overlay) + package exports + full tests
 
 ## Progress
 
@@ -73,5 +73,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Normalization Foundation | 0/3 | Not started | - |
-| 2. DTW Distance & Shape Clustering | 0/3 | Not started | - |
+| 2. DTW Distance & Shape Clustering | 0/3 | Complete    | 2026-04-23 |
 | 3. Overlay Visualization | 0/2 | Not started | - |
