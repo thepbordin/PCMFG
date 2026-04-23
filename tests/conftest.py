@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
+from pcmfg.analysis.dtw_clusterer import DTWClusterResult
 from pcmfg.config import Config
 from pcmfg.models.schemas import (
     AnalysisMetadata,
@@ -453,3 +455,72 @@ def sample_normalized_trajectories_missing_direction() -> list[NormalizedTraject
         )
 
     return trajectories
+
+
+@pytest.fixture
+def sample_dtw_cluster_result(
+    sample_normalized_trajectories_multi: list[NormalizedTrajectory],
+) -> DTWClusterResult:
+    """Create a sample DTWClusterResult with 2 clusters.
+
+    Cluster 0: rising_romance.txt + slow_burn.txt
+    Cluster 1: enemies_to_lovers.txt
+
+    Barycenters are shape (100, 18) numpy arrays with values derived
+    from the constituent trajectories.
+    """
+    sources = ["rising_romance.txt", "enemies_to_lovers.txt", "slow_burn.txt"]
+
+    # Group trajectories by source for barycenter computation
+    grouped: dict[str, dict[tuple[str, str], list[float]]] = {}
+    for traj in sample_normalized_trajectories_multi:
+        if traj.source not in grouped:
+            grouped[traj.source] = {}
+        grouped[traj.source][(traj.direction, traj.emotion)] = list(traj.y)
+
+    # Build barycenters: mean of cluster members
+    n_points = 100
+
+    # Cluster 0: rising_romance + slow_burn
+    bary_0 = np.zeros((n_points, 18), dtype=np.float64)
+    for emotion_idx, emotion in enumerate(BASE_EMOTIONS):
+        for dir_offset, direction in enumerate(["A_to_B", "B_to_A"]):
+            col = emotion_idx * 2 + dir_offset
+            vals_0 = np.array(grouped["rising_romance.txt"][(direction, emotion)])
+            vals_1 = np.array(grouped["slow_burn.txt"][(direction, emotion)])
+            bary_0[:, col] = (vals_0 + vals_1) / 2.0
+
+    # Cluster 1: enemies_to_lovers
+    bary_1 = np.zeros((n_points, 18), dtype=np.float64)
+    for emotion_idx, emotion in enumerate(BASE_EMOTIONS):
+        for dir_offset, direction in enumerate(["A_to_B", "B_to_A"]):
+            col = emotion_idx * 2 + dir_offset
+            bary_1[:, col] = np.array(
+                grouped["enemies_to_lovers.txt"][(direction, emotion)]
+            )
+
+    # Distance matrix: 3x3 symmetric
+    distance_matrix = np.array(
+        [
+            [0.0, 3.0, 1.0],
+            [3.0, 0.0, 4.0],
+            [1.0, 4.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+
+    return DTWClusterResult(
+        assignments={
+            "rising_romance.txt": 0,
+            "enemies_to_lovers.txt": 1,
+            "slow_burn.txt": 0,
+        },
+        barycenters=[bary_0, bary_1],
+        distance_matrix=distance_matrix,
+        n_clusters=2,
+        metric="dtw",
+        sakoe_chiba_radius=2,
+        cluster_sizes={"0": 2, "1": 1},
+        silhouette_score=0.5,
+        sources=sources,
+    )

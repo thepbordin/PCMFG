@@ -1,8 +1,11 @@
-"""Tests for NarrativeOverlayPlotter - TDD RED phase."""
+"""Tests for NarrativeOverlayPlotter - VIS-01, VIS-02, VIS-03, VIS-04."""
+
+import os
 
 import pytest
 from pathlib import Path
 
+from pcmfg.models.schemas import BASE_EMOTIONS
 from pcmfg.visualization.overlay_plotter import NarrativeOverlayPlotter
 
 
@@ -97,3 +100,133 @@ class TestNarrativeOverlayPlotterInit:
         npt.assert_array_equal(
             unpacked[("B_to_A", "Arousal")], [18.0, 18.0, 18.0, 18.0, 18.0]
         )
+
+
+class TestVIS01:
+    """VIS-01: Overlay multiple normalized trajectories on same axes."""
+
+    def test_overlay_creates_file(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_overlay() creates a PNG file at output_path."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay.png"
+        plotter.plot_overlay(sample_normalized_trajectories_multi, output)
+
+        assert output.exists(), "Overlay PNG file should be created"
+        assert output.stat().st_size > 0, "Overlay PNG file should not be empty"
+
+    def test_overlay_multiple_narratives(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_overlay() with 3 trajectories produces a non-empty file."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_multi.png"
+        plotter.plot_overlay(sample_normalized_trajectories_multi, output)
+
+        assert output.exists()
+        assert output.stat().st_size > 1000, "File should have reasonable size for 3 narratives"
+
+    def test_overlay_with_cluster_coloring(
+        self,
+        sample_normalized_trajectories_multi: list,
+        sample_dtw_cluster_result: object,
+        tmp_path: Path,
+    ) -> None:
+        """plot_overlay() with cluster_result uses CLUSTER_COLORS and creates file."""
+        from pcmfg.analysis.plotter import CLUSTER_COLORS
+
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_clustered.png"
+        plotter.plot_overlay(
+            sample_normalized_trajectories_multi,
+            output,
+            cluster_result=sample_dtw_cluster_result,
+        )
+
+        assert output.exists()
+        assert output.stat().st_size > 0
+
+    def test_overlay_without_cluster_uses_tab10(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_overlay() without cluster_result uses default tab10 coloring."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_tab10.png"
+        plotter.plot_overlay(sample_normalized_trajectories_multi, output)
+
+        assert output.exists()
+        assert output.stat().st_size > 0
+
+
+class TestVIS02:
+    """VIS-02: Per-emotion overlay plots for all 9 base emotions."""
+
+    def test_plot_emotion_creates_file(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_emotion('Joy', ...) creates a PNG file."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_joy.png"
+        plotter.plot_emotion(sample_normalized_trajectories_multi, "Joy", output)
+
+        assert output.exists()
+        assert output.stat().st_size > 0
+
+    def test_plot_all_emotions(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """Can call plot_emotion for all 9 BASE_EMOTIONS without error."""
+        plotter = NarrativeOverlayPlotter()
+
+        for emotion in BASE_EMOTIONS:
+            output = tmp_path / f"overlay_{emotion.lower()}.png"
+            plotter.plot_emotion(
+                sample_normalized_trajectories_multi, emotion, output
+            )
+            assert output.exists(), f"Emotion plot for {emotion} should exist"
+            assert output.stat().st_size > 0
+
+
+class TestVIS03:
+    """VIS-03: Per-direction overlay plots for asymmetry analysis."""
+
+    def test_plot_direction_creates_file(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_direction('A_to_B', ...) creates a PNG file."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_atob.png"
+        plotter.plot_direction(
+            sample_normalized_trajectories_multi, "A_to_B", output
+        )
+
+        assert output.exists()
+        assert output.stat().st_size > 0
+
+    def test_plot_direction_btoa(
+        self,
+        sample_normalized_trajectories_multi: list,
+        tmp_path: Path,
+    ) -> None:
+        """plot_direction('B_to_A', ...) creates a PNG file."""
+        plotter = NarrativeOverlayPlotter()
+        output = tmp_path / "overlay_btoa.png"
+        plotter.plot_direction(
+            sample_normalized_trajectories_multi, "B_to_A", output
+        )
+
+        assert output.exists()
+        assert output.stat().st_size > 0
