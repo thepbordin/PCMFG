@@ -8,6 +8,7 @@ Main components:
 - SceneClusterer: Cluster scenes/chunks by emotional profile
 - TrajectoryClusterer: Cluster emotional trajectory patterns
 - NarrativeNormalizer: Resample emotion time-series to uniform grid for cross-narrative comparison
+- DTWClusterer: Cluster narratives by emotional arc shape using DTW distance
 - Visualization: Cluster plotting functions
 """
 
@@ -17,6 +18,12 @@ from pcmfg.analysis.feature_extractor import (
     FeatureExtractor,
     FeatureType,
     SceneFeatures,
+)
+from pcmfg.analysis.dtw_clusterer import (
+    DTWClusterer,
+    DTWClusterResult,
+    DistanceMetric,
+    build_dtw_dataset,
 )
 from pcmfg.analysis.normalizer import NarrativeNormalizer
 from pcmfg.analysis.plotter import (
@@ -38,6 +45,11 @@ __all__ = [
     "SceneClusterer",
     "TrajectoryClusterer",
     "ClusterResult",
+    # DTW Clustering
+    "DTWClusterer",
+    "DTWClusterResult",
+    "DistanceMetric",
+    "build_dtw_dataset",
     # Normalization
     "NarrativeNormalizer",
     "NormalizedTrajectory",
