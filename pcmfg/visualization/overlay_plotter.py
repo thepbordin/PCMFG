@@ -468,3 +468,184 @@ class NarrativeOverlayPlotter:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_path, dpi=self.dpi, bbox_inches="tight")
         plt.close(fig)
+
+    def plot_cluster(
+        self,
+        trajectories: list[NormalizedTrajectory],
+        cluster_result: DTWClusterResult,
+        cluster_id: int,
+        output_path: str | Path,
+    ) -> None:
+        """Plot cluster members alongside their barycenter on a 9x2 grid.
+
+        Filters trajectories to only those in the specified cluster, then
+        renders them with their cluster color at low alpha, with the
+        barycenter drawn as a prominent solid line with diamond markers.
+
+        Args:
+            trajectories: List of NormalizedTrajectory objects.
+            cluster_result: DTWClusterResult with assignments and barycenters.
+            cluster_id: Which cluster to visualize (0-indexed).
+            output_path: Path to save the output PNG.
+
+        Raises:
+            ValueError: If cluster_id is out of range or cluster has no members.
+        """
+        if cluster_id >= cluster_result.n_clusters:
+            raise ValueError(
+                f"cluster_id {cluster_id} out of range "
+                f"(0-{cluster_result.n_clusters - 1})"
+            )
+
+        # Filter sources assigned to this cluster
+        cluster_sources = [
+            src
+            for src, cid in cluster_result.assignments.items()
+            if cid == cluster_id
+        ]
+
+        if not cluster_sources:
+            raise ValueError(f"Cluster {cluster_id} has no members")
+
+        # Filter trajectories to cluster members only
+        cluster_trajectories = [
+            t for t in trajectories if t.source in cluster_sources
+        ]
+
+        # Unpack barycenter for this cluster
+        barycenter = cluster_result.barycenters[cluster_id]
+        unpacked = self._unpack_barycenter(barycenter)
+
+        # Group filtered trajectories
+        grouped = self._group_trajectories(cluster_trajectories)
+        sources = sorted(grouped.keys())
+
+        # Determine x-axis from first trajectory
+        first_traj = next(iter(grouped[sources[0]].values()))
+        x = np.linspace(0, 1, len(first_traj))
+
+        # Cluster color
+        color = CLUSTER_COLORS[cluster_id % len(CLUSTER_COLORS)]
+
+        fig, axs = plt.subplots(9, 2, figsize=self.figsize)
+        fig.suptitle(
+            f"Cluster {cluster_id} ({len(cluster_sources)} narratives)",
+            fontsize=16,
+            fontweight="bold",
+        )
+
+        for i, emotion in enumerate(BASE_EMOTIONS):
+            for j, direction in enumerate(DIRECTIONS):
+                ax = axs[i, j]
+                key = (direction, emotion)
+
+                # Collect y-arrays for cluster members
+                y_arrays: list[NDArray[np.float64]] = []
+                subplot_colors: list[str] = []
+                for src in sources:
+                    if key in grouped[src]:
+                        y_arrays.append(grouped[src][key])
+                        subplot_colors.append(color)
+
+                # Barycenter slice for this subplot
+                barycenter_y = unpacked.get(key)
+
+                label = f"{emotion} ({DIRECTION_LABELS[direction]})"
+                self._plot_subplot_overlay(
+                    ax,
+                    y_arrays,
+                    subplot_colors,
+                    alpha=0.3,
+                    barycenter_y=barycenter_y,
+                    x=x,
+                    emotion_label=label,
+                )
+
+        # Add single legend entry for this cluster
+        from matplotlib.lines import Line2D
+
+        legend_handles = [
+            Line2D(
+                [0],
+                [0],
+                color=color,
+                linewidth=2,
+                alpha=0.3,
+                label=f"Cluster {cluster_id} ({len(cluster_sources)} narratives)",
+            ),
+            Line2D(
+                [0],
+                [0],
+                color="black",
+                linewidth=3.5,
+                marker="D",
+                markersize=6,
+                label="Barycenter",
+            ),
+        ]
+        fig.legend(
+            handles=legend_handles,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            fontsize=9,
+            framealpha=0.9,
+        )
+
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=self.dpi, bbox_inches="tight")
+        plt.close(fig)
+
+    def plot_all(
+        self,
+        trajectories: list[NormalizedTrajectory],
+        output_dir: str | Path,
+        cluster_result: DTWClusterResult | None = None,
+    ) -> list[Path]:
+        """Generate the full visualization suite of PNG files.
+
+        Creates overlay_grid.png, 9 per-emotion PNGs, 2 per-direction PNGs,
+        and optionally per-cluster PNGs. All files use the overlay_ prefix.
+
+        Args:
+            trajectories: List of NormalizedTrajectory objects.
+            output_dir: Directory to save all output PNGs.
+            cluster_result: Optional DTWClusterResult for cluster plots.
+
+        Returns:
+            List of Paths to all generated files.
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        generated: list[Path] = []
+
+        # Grid: overlay_grid.png
+        grid_path = output_dir / "overlay_grid.png"
+        self.plot_overlay(trajectories, grid_path, cluster_result, "Narrative Overlay")
+        generated.append(grid_path)
+
+        # Per-emotion: overlay_{emotion_lower}.png
+        for emotion in BASE_EMOTIONS:
+            emotion_path = output_dir / f"overlay_{emotion.lower()}.png"
+            self.plot_emotion(trajectories, emotion, emotion_path, cluster_result)
+            generated.append(emotion_path)
+
+        # Per-direction: overlay_atob.png, overlay_btoa.png
+        for direction, fname in [("A_to_B", "overlay_atob.png"), ("B_to_A", "overlay_btoa.png")]:
+            dir_path = output_dir / fname
+            self.plot_direction(trajectories, direction, dir_path, cluster_result)
+            generated.append(dir_path)
+
+        # Per-cluster: overlay_cluster_{id}.png (only if cluster_result provided)
+        if cluster_result is not None:
+            for cid in range(cluster_result.n_clusters):
+                cluster_path = output_dir / f"overlay_cluster_{cid}.png"
+                self.plot_cluster(
+                    trajectories, cluster_result, cid, cluster_path
+                )
+                generated.append(cluster_path)
+
+        return generated
