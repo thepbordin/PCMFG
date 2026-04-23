@@ -44,12 +44,11 @@ Plans:
   3. User can retrieve a DTW barycenter (prototypical emotional arc) for each cluster
   4. User can switch between Euclidean, DTW, and Soft-DTW distance metrics and configure Sakoe-Chiba warping radius via configuration
   5. Running the same clustering with the same inputs and configuration produces identical results (reproducible with random_state)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
-- [ ] 02-03: TBD
+- [ ] 02-01-PLAN.md — Data model contract (DTWClusterResult, DistanceMetric), trajectory stacking helper, and test scaffold
+- [ ] 02-02-PLAN.md — DTWClusterer.cluster() implementation with all metrics, Sakoe-Chiba constraints, barycenters, and package exports
 
 ### Phase 3: Overlay Visualization
 **Goal**: Users can visually compare emotional trajectories from multiple narratives aligned on the same normalized timeline, with cluster coloring and barycenter overlays.
